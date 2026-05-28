@@ -1,5 +1,14 @@
 # oRKLLM
 
+[![CI](https://github.com/mafischer/oRKLLM/actions/workflows/ci.yml/badge.svg)](https://github.com/mafischer/oRKLLM/actions/workflows/ci.yml)
+[![Release](https://github.com/mafischer/oRKLLM/actions/workflows/release.yml/badge.svg)](https://github.com/mafischer/oRKLLM/actions/workflows/release.yml)
+[![GitHub release](https://img.shields.io/github/v/release/mafischer/oRKLLM?logo=github)](https://github.com/mafischer/oRKLLM/releases/latest)
+[![Node.js](https://img.shields.io/badge/node-%3E%3D18-brightgreen?logo=node.js)](https://nodejs.org)
+[![License](https://img.shields.io/github/license/mafischer/oRKLLM)](LICENSE)
+[![Platform](https://img.shields.io/badge/platform-RK3576%20%7C%20RK3588-blueviolet?logo=linux)](https://github.com/mafischer/oRKLLM)
+[![Tests](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/mafischer/BADGE_GIST_ID/raw/orkllm-tests.json)](https://github.com/mafischer/oRKLLM/actions/workflows/ci.yml)
+[![Vulnerabilities](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/mafischer/BADGE_GIST_ID/raw/orkllm-vulns.json)](https://github.com/mafischer/oRKLLM/security/code-scanning)
+
 ```
               )       (
              ( \     / )          ██████╗ ██████╗ ██╗  ██╗██╗     ██╗     ███╗   ███╗
