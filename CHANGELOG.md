@@ -1,3 +1,10 @@
+## [1.2.1](https://github.com/mafischer/oRKLLM/compare/v1.2.0...v1.2.1) (2026-05-28)
+
+
+### Bug Fixes
+
+* **worker:** hard error on ARM64 when RKLLM library fails to load ([92059a4](https://github.com/mafischer/oRKLLM/commit/92059a456c786e06c5edff05df03951c90911cb6))
+
 # [1.2.0](https://github.com/mafischer/oRKLLM/compare/v1.1.0...v1.2.0) (2026-05-28)
 
 
