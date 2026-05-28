@@ -1,0 +1,21 @@
+[Unit]
+Description=oRKLLM - OpenAI-compatible LLM inference for Rockchip NPU
+Documentation=https://github.com/mafischer/oRKLLM
+After=network.target
+
+[Service]
+Type=simple
+EnvironmentFile=-/etc/orkllm/orkllm.conf
+Environment=ORKLLM_MODELS_DIR=/var/lib/orkllm/models
+Environment=ORKLLM_DB_PATH=/var/lib/orkllm/orkllm.db
+ExecStart=/usr/bin/node /usr/lib/orkllm/src/server.js
+WorkingDirectory=/usr/lib/orkllm
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=orkllm
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

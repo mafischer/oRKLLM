@@ -1,0 +1,10 @@
+Template: orkllm/lib_path
+Type: string
+Default: /usr/lib/librkllmrt.so
+Description: Path to librkllmrt.so (Rockchip RKLLM runtime library):
+ Enter the full path to the Rockchip RKLLM runtime shared library.
+ This library is distributed with the official Rockchip RKLLM SDK and
+ is typically installed at /usr/lib/librkllmrt.so.
+ .
+ If the library is not yet installed, you can leave this as the default
+ and update ORKLLM_LIB_PATH in /etc/orkllm/orkllm.conf later.

@@ -1,0 +1,20 @@
+# oRKLLM Configuration
+# Copy this file to /etc/orkllm/orkllm.conf and edit as needed.
+# Lines beginning with # are comments.
+
+# Network interface to bind to.
+# Use 0.0.0.0 to accept connections from the local network.
+ORKLLM_HOST=0.0.0.0
+
+# Port to listen on.
+ORKLLM_PORT=8000
+
+# Directory containing .rkllm model files.
+# ORKLLM_MODELS_DIR=/var/lib/orkllm/models
+
+# Full path to librkllmrt.so from the Rockchip RKLLM SDK.
+# The default searches common locations; set this explicitly if needed.
+# ORKLLM_LIB_PATH=/usr/lib/librkllmrt.so
+
+# SQLite database path for credentials and settings.
+# ORKLLM_DB_PATH=/var/lib/orkllm/orkllm.db

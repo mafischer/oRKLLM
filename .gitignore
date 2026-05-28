@@ -1,0 +1,11 @@
+node_modules/
+build/
+dist/
+test-results/
+test_auth.db
+test_auth.json
+frontend/dist/
+arm64_deps/
+build_stage/
+*.log
+.env

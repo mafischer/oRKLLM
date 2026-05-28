@@ -1,0 +1,10 @@
+#!/bin/bash
+set -e
+
+case "$1" in
+  remove|purge)
+    systemctl stop orkllm.service || true
+    systemctl disable orkllm.service || true
+    systemctl daemon-reload || true
+    ;;
+esac

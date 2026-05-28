@@ -1,0 +1,32 @@
+#!/bin/bash
+set -e
+. /usr/share/debconf/confmodule
+
+case "$1" in
+  configure)
+    mkdir -p /var/lib/orkllm/models
+
+    if [ ! -f /etc/orkllm/orkllm.conf ]; then
+      cp /etc/orkllm/orkllm.conf.example /etc/orkllm/orkllm.conf
+      echo "oRKLLM: default config installed at /etc/orkllm/orkllm.conf"
+    fi
+
+    # Write the lib path chosen (or defaulted) during debconf
+    db_get orkllm/lib_path
+    LIB_PATH="$RET"
+    if [ -n "$LIB_PATH" ]; then
+      sed -i "s|^#\? *ORKLLM_LIB_PATH=.*|ORKLLM_LIB_PATH=${LIB_PATH}|" /etc/orkllm/orkllm.conf
+    fi
+
+    systemctl daemon-reload || true
+    systemctl enable orkllm.service || true
+
+    echo ""
+    echo "oRKLLM installed successfully."
+    echo "  1. Place .rkllm model files in /var/lib/orkllm/models/"
+    echo "  2. Review settings in /etc/orkllm/orkllm.conf"
+    echo "  3. Start the service: sudo systemctl start orkllm"
+    echo "  4. Open the admin console: http://localhost:8000/admin"
+    echo ""
+    ;;
+esac

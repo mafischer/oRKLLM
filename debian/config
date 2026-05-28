@@ -1,0 +1,32 @@
+#!/bin/bash
+set -e
+. /usr/share/debconf/confmodule
+
+# Probe for librkllmrt.so in order of preference:
+# 1. Official RKLLM SDK standard location
+# 2. Multiarch lib path
+# 3. /usr/local/lib
+# 4. ldconfig cache (catches any other registered path)
+FOUND=""
+for probe in \
+  /usr/lib/librkllmrt.so \
+  /usr/lib/aarch64-linux-gnu/librkllmrt.so \
+  /usr/local/lib/librkllmrt.so; do
+  if [ -f "$probe" ]; then
+    FOUND="$probe"
+    break
+  fi
+done
+
+if [ -z "$FOUND" ]; then
+  FOUND=$(ldconfig -p 2>/dev/null | awk '/librkllmrt\.so/{print $NF}' | head -1)
+fi
+
+# Only override the stored value if we actually found the library,
+# so reinstalls don't clobber a user-customised path.
+if [ -n "$FOUND" ]; then
+  db_set orkllm/lib_path "$FOUND"
+fi
+
+db_input medium orkllm/lib_path || true
+db_go || true
