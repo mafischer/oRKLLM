@@ -179,14 +179,14 @@ jobs:
         if: secrets.GIST_TOKEN != ''
         env:
           GIST_TOKEN: ${{ secrets.GIST_TOKEN }}
-          GIST_ID: ${{ secrets.BADGE_GIST_ID }}
+          GIST_ID: 3f7aa1a18ad678cb62b818d4207dc926
           TESTS_PASSED: ${{ needs.test.outputs.tests_passed }}
           TESTS_TOTAL: ${{ needs.test.outputs.tests_total }}
           VULN_COUNT: ${{ needs.scan.outputs.vuln_count }}
           VULN_COLOR: ${{ needs.scan.outputs.vuln_color }}
         run: |
           [ -z "$GIST_TOKEN" ] && { echo "GIST_TOKEN not set — skipping badge update"; exit 0; }
-          [ -z "$GIST_ID" ]    && { echo "BADGE_GIST_ID not set — skipping badge update"; exit 0; }
+          [ -z "$GIST_ID" ]    && { echo "GIST_ID not set — skipping badge update"; exit 0; }
 
           TEST_COLOR=brightgreen
           [ "$TESTS_PASSED" != "$TESTS_TOTAL" ] && TEST_COLOR=red
