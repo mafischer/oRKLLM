@@ -56,7 +56,7 @@ struct RKLLMParam {
     const char* model_path;
     int32_t max_context_len;
     int32_t max_new_tokens;
-    float top_k;
+    int32_t top_k;
     int32_t n_keep;
     float top_p;
     float temperature;
@@ -72,7 +72,6 @@ struct RKLLMParam {
     const char* img_end;
     const char* img_content;
     RKLLMExtendParam extend_param;
-    bool use_gpu;
 };
 
 struct RKLLMLoraAdapter {
@@ -287,7 +286,7 @@ Napi::Value InitModel(const Napi::CallbackInfo& info) {
     
     param.max_context_len = options.Has("max_context_len") ? options.Get("max_context_len").As<Napi::Number>().Int32Value() : 2048;
     param.max_new_tokens = options.Has("max_new_tokens") ? options.Get("max_new_tokens").As<Napi::Number>().Int32Value() : 512;
-    param.top_k = options.Has("top_k") ? options.Get("top_k").As<Napi::Number>().FloatValue() : 40.0f;
+    param.top_k = options.Has("top_k") ? options.Get("top_k").As<Napi::Number>().Int32Value() : 40;
     param.top_p = options.Has("top_p") ? options.Get("top_p").As<Napi::Number>().FloatValue() : 0.9f;
     param.temperature = options.Has("temperature") ? options.Get("temperature").As<Napi::Number>().FloatValue() : 0.8f;
     param.repeat_penalty = options.Has("repeat_penalty") ? options.Get("repeat_penalty").As<Napi::Number>().FloatValue() : 1.1f;
@@ -298,8 +297,7 @@ Napi::Value InitModel(const Napi::CallbackInfo& info) {
     param.mirostat_eta = options.Has("mirostat_eta") ? options.Get("mirostat_eta").As<Napi::Number>().FloatValue() : 0.1f;
     
     param.skip_special_token = true;
-    param.use_gpu = true;
-    
+
     param.extend_param.base_domain_id = 1;
     param.extend_param.embed_flash = 1;
     param.extend_param.n_batch = 1;
