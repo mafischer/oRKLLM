@@ -9,38 +9,42 @@
 
     <v-spacer></v-spacer>
 
-    <v-menu location="bottom end">
-      <template v-slot:activator="{ props }">
-        <v-btn v-bind="props" icon color="primary" variant="tonal" size="36">
-          <v-icon size="20">mdi-account</v-icon>
-        </v-btn>
-      </template>
-      <v-list density="compact" class="glass-card py-1" min-width="180">
-        <v-list-item class="px-4 py-2">
-          <div class="text-caption text-grey">Signed in as</div>
-          <div class="text-body-2 font-weight-bold">{{ username }}</div>
-        </v-list-item>
-        <v-divider></v-divider>
-        <v-list-item
-          :prepend-icon="isDark ? 'mdi-weather-sunny' : 'mdi-weather-night'"
-          :title="isDark ? 'Light Mode' : 'Dark Mode'"
-          @click="toggleTheme"
-        ></v-list-item>
-        <v-list-item
-          prepend-icon="mdi-cog-outline"
-          title="Global Settings"
-          @click="$router.push('/settings')"
-        ></v-list-item>
-        <v-divider></v-divider>
-        <v-list-item
-          prepend-icon="mdi-logout"
-          title="Sign Out"
-          @click="logout"
-          class="text-error"
-        ></v-list-item>
-      </v-list>
-    </v-menu>
+    <v-btn icon color="primary" variant="tonal" size="36" @click="userMenuOpen = true">
+      <v-icon size="20">mdi-account</v-icon>
+    </v-btn>
   </v-app-bar>
+
+  <v-navigation-drawer
+    v-model="userMenuOpen"
+    location="right"
+    temporary
+    width="240"
+  >
+    <v-list density="compact" class="py-1">
+      <v-list-item class="px-4 py-3">
+        <div class="text-caption text-grey">Signed in as</div>
+        <div class="text-body-2 font-weight-bold">{{ username }}</div>
+      </v-list-item>
+      <v-divider></v-divider>
+      <v-list-item
+        :prepend-icon="isDark ? 'mdi-weather-sunny' : 'mdi-weather-night'"
+        :title="isDark ? 'Light Mode' : 'Dark Mode'"
+        @click="toggleTheme"
+      ></v-list-item>
+      <v-list-item
+        prepend-icon="mdi-cog-outline"
+        title="Global Settings"
+        @click="$router.push('/settings')"
+      ></v-list-item>
+      <v-divider></v-divider>
+      <v-list-item
+        prepend-icon="mdi-logout"
+        title="Sign Out"
+        @click="logout"
+        class="text-error"
+      ></v-list-item>
+    </v-list>
+  </v-navigation-drawer>
 
   <v-main class="bg-slate-page fill-height">
     <v-container fluid class="pt-6 px-6 fill-height align-start">
@@ -682,11 +686,13 @@ export default {
     playgroundModel: null,
 
     scanningModels: false,
-    appVersion: __APP_VERSION__
+    appVersion: __APP_VERSION__,
+    userMenuOpen: false,
+    themeName: localStorage.getItem('orkllm-theme') || 'customDarkTheme'
   }),
   computed: {
     isDark() {
-      return this.$vuetify.theme.global.name.value === 'customDarkTheme';
+      return this.themeName === 'customDarkTheme';
     },
     modelSelectItems() {
       return this.models.map(m => ({
@@ -924,8 +930,13 @@ export default {
     },
     toggleTheme() {
       const next = this.isDark ? 'customLightTheme' : 'customDarkTheme';
-      this.$vuetify.theme.global.name.value = next;
+      this.themeName = next;
       localStorage.setItem('orkllm-theme', next);
+      try {
+        this.$vuetify.theme.global.name.value = next;
+      } catch {
+        this.$vuetify.theme.global.name = next;
+      }
     },
     async logout() {
       try {

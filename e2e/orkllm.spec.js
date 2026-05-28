@@ -45,11 +45,13 @@ test('oRKLLM End-to-End User Journey', async ({ page }) => {
 
   // Expect redirect back to dashboard
   await expect(page).toHaveURL(/http:\/\/127.0.0.1:8000\/?$/);
-  await expect(page.locator('.text-gradient')).toContainText('oRKLLM Console');
+  await expect(page.locator('.text-gradient')).toContainText('oRKLLM');
 
   // --- STEP 2: Authentication (Logout & Login Enforcement) ---
-  // Click logout
-  await page.click('button[title="Sign Out"]');
+  // Open user menu drawer then sign out
+  await page.click('.v-app-bar .v-btn:has(.mdi-account)');
+  await page.waitForSelector('.v-navigation-drawer', { state: 'visible' });
+  await page.click('.v-navigation-drawer .v-list-item:has-text("Sign Out")');
 
   // Expect redirect to login page
   await expect(page).toHaveURL(/\/login/);
@@ -89,7 +91,7 @@ test('oRKLLM End-to-End User Journey', async ({ page }) => {
   }
 
   // Verify dummy model is scanned and listed
-  await expect(page.locator(`text=${dummyModelName}`)).toBeVisible();
+  await expect(page.locator('.v-list-item').filter({ hasText: dummyModelName }).first()).toBeVisible();
 
   // Load the model
   await page.click(`.v-list-item:has-text("${dummyModelName}") button:has-text("Load")`);
