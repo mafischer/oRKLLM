@@ -1,3 +1,10 @@
+# [0.4.0](https://github.com/mafischer/oRKLLM/compare/v0.3.1...v0.4.0) (2026-05-28)
+
+
+### Features
+
+* **cache:** tiered SSD prefix cache and sliding context window ([fe6f678](https://github.com/mafischer/oRKLLM/commit/fe6f67883cc4b3b49efa7c9515dbdb541cc42e56))
+
 ## [0.3.1](https://github.com/mafischer/oRKLLM/compare/v0.3.0...v0.3.1) (2026-05-28)
 
 
