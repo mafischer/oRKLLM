@@ -1,10 +1,9 @@
 name: Release
 
 on:
-  workflow_run:
-    workflows: [CI]
-    branches: [main]
-    types: [completed]
+  push:
+    branches:
+      - main
 
 permissions:
   contents: write
@@ -12,17 +11,18 @@ permissions:
   pull-requests: write
 
 jobs:
-  release:
+  # Starts immediately in parallel with CI — does the slow work up front
+  build:
+    name: Build
     runs-on: ubuntu-latest
-    # Only run if CI passed
-    if: github.event.workflow_run.conclusion == 'success'
+    outputs:
+      arm64_cache_key: ${{ steps.cache-key.outputs.key }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: ${{ github.event.workflow_run.head_sha }}
           token: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
 
       - name: Configure git
@@ -45,6 +45,10 @@ jobs:
       - name: Build frontend
         run: npm run build:frontend
 
+      - name: Compute ARM64 cache key
+        id: cache-key
+        run: echo "key=arm64-deps-node22-${{ hashFiles('package-lock.json', 'binding.gyp', 'src/addon/**') }}" >> "$GITHUB_OUTPUT"
+
       - name: Prepare ARM64 build context
         run: |
           mkdir -p arm64_deps
@@ -58,7 +62,7 @@ jobs:
           path: |
             arm64_deps/node_modules
             arm64_deps/build
-          key: arm64-deps-node22-${{ hashFiles('package-lock.json', 'binding.gyp', 'src/addon/**') }}
+          key: ${{ steps.cache-key.outputs.key }}
 
       - name: Set up QEMU
         if: steps.arm64-cache.outputs.cache-hit != 'true'
@@ -77,6 +81,73 @@ jobs:
               npm ci --omit=dev
             "
           sudo chown -R "$(id -u):$(id -g)" arm64_deps/node_modules arm64_deps/build
+
+  # Waits for both build AND CI to pass before releasing
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+    needs: build  # ARM64 build must succeed
+
+    steps:
+      - name: Wait for CI to pass
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          SHA="${{ github.sha }}"
+          echo "Waiting for CI to complete on $SHA..."
+          for i in $(seq 1 30); do
+            STATUS=$(gh api "repos/${{ github.repository }}/commits/$SHA/check-runs" \
+              --jq '[.check_runs[] | select(.name == "Test" or .name == "Security Scan")] |
+                    if length == 0 then "pending"
+                    elif all(.[]; .status == "completed") then
+                      if all(.[]; .conclusion == "success") then "success" else "failure" end
+                    else "pending" end' 2>/dev/null || echo "pending")
+            echo "  attempt $i/30: $STATUS"
+            if [ "$STATUS" = "success" ]; then
+              echo "CI passed — proceeding with release"
+              exit 0
+            elif [ "$STATUS" = "failure" ]; then
+              echo "CI failed — aborting release"
+              exit 1
+            fi
+            sleep 20
+          done
+          echo "Timed out waiting for CI (10 min)"
+          exit 1
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install frontend dependencies
+        run: cd frontend && npm ci
+
+      - name: Build frontend
+        run: npm run build:frontend
+
+      - name: Restore ARM64 compiled dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            arm64_deps/node_modules
+            arm64_deps/build
+          key: arm64-deps-node22-${{ hashFiles('package-lock.json', 'binding.gyp', 'src/addon/**') }}
 
       - name: Release
         env:
