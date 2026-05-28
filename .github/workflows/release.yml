@@ -29,7 +29,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
 
       - name: Install dependencies
         run: npm ci
@@ -54,7 +54,7 @@ jobs:
           docker run --rm --platform linux/arm64 \
             -v "${{ github.workspace }}/arm64_deps:/workspace" \
             -w /workspace \
-            node:20-bookworm-slim \
+            node:22-bookworm-slim \
             bash -c "
               apt-get update -q &&
               apt-get install -y -q python3 make g++ &&
