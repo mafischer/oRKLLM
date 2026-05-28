@@ -1,3 +1,10 @@
+# [1.2.0](https://github.com/mafischer/oRKLLM/compare/v1.1.0...v1.2.0) (2026-05-28)
+
+
+### Features
+
+* **ui:** slide-out user menu drawer and theme toggle regression tests ([5aa185f](https://github.com/mafischer/oRKLLM/commit/5aa185f88d5aab1a7e86f487965c41484cc37de5))
+
 # [1.1.0](https://github.com/mafischer/oRKLLM/compare/v1.0.1...v1.1.0) (2026-05-28)
 
 
