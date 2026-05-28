@@ -2,9 +2,9 @@
   <!-- Navbar -->
   <v-app-bar flat class="glass-nav px-4" density="comfortable">
     <v-icon color="primary" class="mr-2" size="32">mdi-chip</v-icon>
-    <v-app-bar-title class="font-weight-bold text-h5 text-gradient d-flex align-center gap-2">
-      oRKLLM
-      <v-chip size="x-small" color="primary" variant="tonal" class="font-weight-regular text-caption">v{{ appVersion }}</v-chip>
+    <v-app-bar-title class="d-flex align-center gap-2">
+      <span class="font-weight-bold text-h5 text-gradient">oRKLLM</span>
+      <v-chip size="x-small" variant="outlined" color="primary" class="font-weight-regular text-caption mt-1">v{{ appVersion }}</v-chip>
     </v-app-bar-title>
 
     <v-spacer></v-spacer>
