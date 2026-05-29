@@ -1,3 +1,10 @@
+# [0.5.0](https://github.com/mafischer/oRKLLM/compare/v0.4.0...v0.5.0) (2026-05-29)
+
+
+### Features
+
+* **auth:** OIDC/SAML federated auth, multi-user RBAC, site management UI ([5ffbfe2](https://github.com/mafischer/oRKLLM/commit/5ffbfe2a2a2e1ea0affbfa568132865839ac1793))
+
 # [0.4.0](https://github.com/mafischer/oRKLLM/compare/v0.3.1...v0.4.0) (2026-05-28)
 
 
