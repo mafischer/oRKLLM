@@ -338,7 +338,7 @@
                   <v-text-field
                     v-model="oidcForm.redirectUri"
                     label="Redirect URI"
-                    :placeholder="`${origin}/api/admin/oidc/callback`"
+                    :placeholder="`${origin}/auth/oidc/callback`"
                     variant="outlined"
                     density="compact"
                     class="mb-3"
@@ -844,10 +844,10 @@ export default {
       return window.location.origin;
     },
     samlSpEntityId() {
-      return `${window.location.origin}/api/admin/saml/metadata`;
+      return `${window.location.origin}/auth/saml/metadata`;
     },
     samlAcsUrl() {
-      return `${window.location.origin}/api/admin/saml/acs`;
+      return `${window.location.origin}/auth/saml/acs`;
     },
   },
   async mounted() {
@@ -1104,7 +1104,7 @@ export default {
 
     // SAML
     downloadSamlMetadata() {
-      window.open('/api/admin/saml/metadata', '_blank');
+      window.open('/auth/saml/metadata', '_blank');
     },
     async saveSaml() {
       this.savingSaml = true;

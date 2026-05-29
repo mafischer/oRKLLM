@@ -107,9 +107,9 @@ export default {
   methods: {
     signInWithProvider() {
       if (this.oidcEnabled) {
-        window.location.href = '/api/admin/oidc/authorize';
+        window.location.href = '/auth/oidc/authorize';
       } else if (this.samlEnabled) {
-        window.location.href = '/api/admin/saml/login';
+        window.location.href = '/auth/saml/login';
       }
     },
     async submitLogin() {

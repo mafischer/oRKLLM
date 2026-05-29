@@ -8,6 +8,7 @@ import { fileURLToPath } from 'url';
 import { Writable } from 'stream';
 import apiRoutes from './api/routes.js';
 import adminRoutes from './admin/routes.js';
+import authRoutes from './auth/routes.js';
 import { getSystemMetrics } from './monitor.js';
 import { getStats } from './stats.js';
 
@@ -58,6 +59,7 @@ await fastify.register(fastifyWebsocket);
 // Mount API & Admin Routes
 await fastify.register(apiRoutes, { prefix: '/v1' });
 await fastify.register(adminRoutes, { prefix: '/api/admin' });
+await fastify.register(authRoutes, { prefix: '/auth' });
 
 // Setup WebSockets
 // 1. Metrics WebSocket
