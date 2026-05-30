@@ -9,8 +9,8 @@
 
     <v-spacer></v-spacer>
 
-    <!-- Center nav buttons -->
-    <div class="d-flex align-center gap-1 mx-2">
+    <!-- Desktop/tablet nav buttons (hidden on xs) -->
+    <div class="d-none d-sm-flex align-center gap-1 mx-1">
       <v-btn
         v-for="nav in navItems"
         :key="nav.path"
@@ -21,16 +21,46 @@
         :color="isActive(nav.path) ? 'primary' : 'default'"
         :class="['nav-btn', isActive(nav.path) ? 'nav-btn--active' : '']"
       >
-        {{ nav.label }}
+        <!-- Hide labels on small screens to save space -->
+        <span class="d-none d-md-inline">{{ nav.label }}</span>
       </v-btn>
     </div>
 
-    <v-spacer></v-spacer>
+    <v-spacer class="d-none d-sm-flex"></v-spacer>
+
+    <!-- Mobile nav icon (hamburger, shown on xs only) -->
+    <v-btn icon variant="text" size="36" class="d-flex d-sm-none mr-1" @click="mobileNavOpen = true">
+      <v-icon size="22">mdi-menu</v-icon>
+    </v-btn>
 
     <v-btn icon color="primary" variant="tonal" size="36" @click="drawerOpen = true">
       <v-icon size="20">mdi-account</v-icon>
     </v-btn>
   </v-app-bar>
+
+  <!-- Mobile nav drawer (xs screens) -->
+  <v-navigation-drawer
+    v-model="mobileNavOpen"
+    location="left"
+    temporary
+    width="200"
+    class="d-sm-none"
+  >
+    <v-list density="compact" class="py-2">
+      <v-list-item
+        v-for="nav in navItems"
+        :key="nav.path"
+        :prepend-icon="nav.icon"
+        :title="nav.label"
+        :to="nav.path"
+        :active="isActive(nav.path)"
+        active-color="primary"
+        rounded="lg"
+        class="mx-2 mb-1"
+        @click="mobileNavOpen = false"
+      ></v-list-item>
+    </v-list>
+  </v-navigation-drawer>
 
   <!-- User slide-out drawer -->
   <v-navigation-drawer
@@ -104,6 +134,7 @@ export default {
   },
   data: () => ({
     drawerOpen: false,
+    mobileNavOpen: false,
     navItems: [
       { path: '/',         label: 'Dashboard', icon: 'mdi-view-dashboard-outline' },
       { path: '/models',   label: 'Models',    icon: 'mdi-chip' },
