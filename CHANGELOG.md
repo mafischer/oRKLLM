@@ -1,3 +1,11 @@
+# [0.7.0-alpha.1](https://github.com/mafischer/oRKLLM/compare/v0.6.0...v0.7.0-alpha.1) (2026-05-30)
+
+
+### Features
+
+* **ci:** automated beta promotion after 48h stability window ([b01c259](https://github.com/mafischer/oRKLLM/commit/b01c259b7cdc62f6680d23371d180b23f9579848))
+* **github:** bug report issue template with version field ([7245dc4](https://github.com/mafischer/oRKLLM/commit/7245dc4e9aebe3d962cc0678dd3012fe90ae6952))
+
 # [0.6.0](https://github.com/mafischer/oRKLLM/compare/v0.5.1...v0.6.0) (2026-05-30)
 
 
