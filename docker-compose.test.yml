@@ -11,7 +11,7 @@ services:
     ports:
       - "8080:8080"
     healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:8080/realms/master/.well-known/openid-configuration"]
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/realms/orkllm/.well-known/openid-configuration"]
       interval: 5s
       timeout: 5s
       retries: 24

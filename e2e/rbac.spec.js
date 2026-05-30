@@ -413,7 +413,7 @@ test('User drawer shows role and auth provider info', async ({ page }) => {
 //        nginx on port 80 proxies orkllm.fischerapps.com → oRKLLM test server
 //
 // Local: Real Keycloak at auth-lab.fischerapps.com (ORKLLM_TEST_LIVE=1)
-//        or local container (ORKLLM_TEST_MOCK_OIDC_URL pointing to localhost:8080/realms/master)
+//        or local container (ORKLLM_TEST_MOCK_OIDC_URL pointing to localhost:8080/realms/orkllm)
 // ---------------------------------------------------------------------------
 
 // Keycloak issuer to use for SSO tests — either the CI container or real Keycloak
