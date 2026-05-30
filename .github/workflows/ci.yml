@@ -71,7 +71,7 @@ jobs:
           ORKLLM_TEST_OIDC_USER_PASS: ${{ secrets.ORKLLM_TEST_OIDC_USER_PASS }}
           ORKLLM_TEST_OIDC_ADMIN_USER: ${{ secrets.ORKLLM_TEST_OIDC_ADMIN_USER }}
           ORKLLM_TEST_OIDC_ADMIN_PASS: ${{ secrets.ORKLLM_TEST_OIDC_ADMIN_PASS }}
-          ORKLLM_TEST_LIVE: ${{ secrets.ORKLLM_TEST_LIVE }}
+          ORKLLM_TEST_LIVE: ${{ vars.ORKLLM_TEST_LIVE }}
 
       - name: Parse test results
         id: results
