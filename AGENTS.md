@@ -30,6 +30,14 @@ oRKLLM is a **Node.js / JavaScript project end-to-end**. All tooling decisions s
 - Use `node -e "..."` or inline `node << 'EOF' ... EOF` in shell scripts and CI workflows.
 - **Never default to Python** unless it is the only viable option (e.g. `rkllm-toolkit` model conversion, which is a Python-only SDK). If you reach for `python3`, stop and ask whether Node.js can do it instead.
 
+### Git hygiene
+
+- **Prefer fast-forward merges** whenever practical. Use `git merge --ff-only` or rebase rather than creating unnecessary merge commits.
+- **Keep history linear and clean.** A flat history is easier to bisect, revert, and understand.
+- Merge commits are acceptable when intentionally promoting between release branches (e.g. `alpha → beta`, `beta → main`) — use `--no-ff` there to mark the promotion explicitly.
+- Avoid `--no-verify`, force pushes to shared branches, or amending published commits.
+- Cherry-pick single commits (e.g. hotfixes, docs) to `main` rather than merging an entire branch when only one commit is relevant.
+
 ### Documentation review on every commit
 
 **Before committing any change**, review `AGENTS.md` and `README.md` to determine if they need updating:
