@@ -44,6 +44,14 @@ async function loginAs(page, username = ADMIN_USER, password = ADMIN_PASS) {
   }
 
   if (url.includes('/login')) {
+    // Ensure local auth is not disabled before attempting login
+    await page.evaluate(async () => {
+      await fetch('/api/admin/global-settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ localAuthDisabled: false }),
+      }).catch(() => {});
+    });
     // Login via API directly — avoids Vuetify form validation timing issues
     // and SSO button conflicts when a provider is configured
     const result = await page.evaluate(async ({ u, p }) => {
@@ -381,6 +389,11 @@ test('SSO: Keycloak regular user can log in via OIDC', async ({ browser }) => {
   test.skip(!IS_LIVE || !OIDC_USER || !OIDC_USER_PASS,
     'Set ORKLLM_TEST_LIVE=1 and OIDC user credentials to run SSO tests');
 
+  // Check the live server is reachable before attempting the test
+  const reachable = await fetch(`${LIVE_BASE_URL}/api/admin/auth-status`, { signal: AbortSignal.timeout(5000) })
+    .then(r => r.ok || r.status === 401 || r.status === 200).catch(() => false);
+  test.skip(!reachable, `Live server ${LIVE_BASE_URL} not reachable from this environment`);
+
   const ctx = await browser.newContext({ baseURL: LIVE_BASE_URL });
   const page = await ctx.newPage();
 
@@ -422,6 +435,10 @@ test('SSO: Keycloak regular user can log in via OIDC', async ({ browser }) => {
 test('SSO: Keycloak admin user gets admin role via group mapping', async ({ browser }) => {
   test.skip(!IS_LIVE || !OIDC_ADMIN_USER || !OIDC_ADMIN_PASS,
     'Set ORKLLM_TEST_LIVE=1 and OIDC admin credentials to run SSO tests');
+
+  const reachable = await fetch(`${LIVE_BASE_URL}/api/admin/auth-status`, { signal: AbortSignal.timeout(5000) })
+    .then(r => r.ok || r.status === 401 || r.status === 200).catch(() => false);
+  test.skip(!reachable, `Live server ${LIVE_BASE_URL} not reachable from this environment`);
 
   const ctx = await browser.newContext({ baseURL: LIVE_BASE_URL });
   const page = await ctx.newPage();
