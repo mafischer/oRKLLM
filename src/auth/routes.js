@@ -128,9 +128,11 @@ export default async function authRoutes(fastify, options) {
     let user = dbGetUserBySubject('oidc', subject);
     if (!user) {
       if (!c.autoProvision) return reply.redirect(`/?oidc_error=${encodeURIComponent('User not provisioned. Contact your administrator.')}`);
-      // If username already taken, link the OIDC identity to that account
+      // If username already taken by a local user WITHOUT a password (stub account),
+      // link the OIDC identity to that account.
+      // If they have a password, provision a new account with a unique username to avoid collisions.
       const existingByUsername = dbGetUserByUsername(username);
-      if (existingByUsername) {
+      if (existingByUsername && !existingByUsername.password_hash) {
         dbUpdateUser(existingByUsername.id, {
           last_login_at: Date.now(),
           email: email ?? existingByUsername.email,
@@ -138,6 +140,12 @@ export default async function authRoutes(fastify, options) {
           auth_subject: subject,
         });
         user = dbGetUserById(existingByUsername.id);
+      } else if (existingByUsername) {
+        // Local user with password exists — create a unique OIDC account
+        const uniqueUsername = `${username}_oidc_${subject.slice(0, 8)}`;
+        const id = uuidv4();
+        dbCreateUser({ id, username: uniqueUsername, email, role, authProvider: 'oidc', authSubject: subject, passwordHash: null, passwordSalt: null });
+        user = dbGetUserById(id);
       } else {
         const id = uuidv4();
         dbCreateUser({ id, username, email, role, authProvider: 'oidc', authSubject: subject, passwordHash: null, passwordSalt: null });
