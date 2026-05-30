@@ -101,14 +101,19 @@ jobs:
 
       - name: Wait for Keycloak to be healthy
         run: |
-          for i in $(seq 1 30); do
-            curl -sf http://localhost:8080/health/ready > /dev/null 2>&1 \
+          for i in $(seq 1 45); do
+            curl -sf http://localhost:8080/realms/master/.well-known/openid-configuration > /dev/null 2>&1 \
               && echo "Keycloak ready after ${i}x2s" && break
-            [ $i -eq 30 ] && docker logs $(docker compose -f docker-compose.test.yml ps -q keycloak) && exit 1
+            if [ $i -eq 45 ]; then
+              echo "Keycloak did not become ready — container logs:"
+              docker compose -f docker-compose.test.yml logs keycloak || true
+              exit 1
+            fi
             sleep 2
           done
-          curl -sf http://localhost:8080/realms/master/.well-known/openid-configuration \
-            | node -e "const d=JSON.parse(require('fs').readFileSync('/dev/stdin','utf8')); console.log('issuer:', d.issuer)"
+          ISSUER=$(curl -sf http://localhost:8080/realms/master/.well-known/openid-configuration \
+            | node -e "let d=''; process.stdin.on('data',c=>d+=c).on('end',()=>console.log(JSON.parse(d).issuer))")
+          echo "Keycloak issuer: $ISSUER"
 
       - name: Run E2E tests
         id: playwright
