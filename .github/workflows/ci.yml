@@ -24,18 +24,22 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build optimized Keycloak image (cached)
-        uses: docker/build-push-action@v6
+      - name: Cache Keycloak image tar
+        id: kc-image-cache
+        uses: actions/cache@v4
         with:
-          context: ./e2e
-          file: ./e2e/Dockerfile.keycloak
-          tags: orkllm-keycloak-test:latest
-          load: true
-          cache-from: type=gha,scope=keycloak-test
-          cache-to: type=gha,scope=keycloak-test,mode=max
+          path: /tmp/kc-image.tar
+          key: keycloak-optimized-${{ hashFiles('e2e/Dockerfile.keycloak', 'e2e/keycloak-realm.json') }}
+
+      - name: Build optimized Keycloak image
+        if: steps.kc-image-cache.outputs.cache-hit != 'true'
+        run: |
+          docker build -t orkllm-keycloak-test:latest -f e2e/Dockerfile.keycloak e2e/
+          docker save orkllm-keycloak-test:latest -o /tmp/kc-image.tar
+
+      - name: Load cached Keycloak image
+        if: steps.kc-image-cache.outputs.cache-hit == 'true'
+        run: docker load -i /tmp/kc-image.tar
 
       - name: Start Keycloak and configure nginx
         run: |
@@ -104,7 +108,7 @@ jobs:
             sleep 2
           done
           curl -sf http://localhost:8080/realms/master/.well-known/openid-configuration \
-            | python3 -c "import sys,json; d=json.load(sys.stdin); print('issuer:', d['issuer'])"
+            | node -e "const d=JSON.parse(require('fs').readFileSync('/dev/stdin','utf8')); console.log('issuer:', d.issuer)"
 
       - name: Run E2E tests
         id: playwright
@@ -133,8 +137,8 @@ jobs:
         if: always()
         run: |
           if [ -f /tmp/pw-results.json ]; then
-            PASSED=$(python3 -c "import json; d=json.load(open('/tmp/pw-results.json')); s=d.get('stats',{}); print(s.get('expected', s.get('passed', 0)))")
-            TOTAL=$(python3  -c "import json; d=json.load(open('/tmp/pw-results.json')); s=d.get('stats',{}); print(s.get('total', s.get('expected',0) + s.get('unexpected',0)))")
+            PASSED=$(node -e "const s=JSON.parse(require('fs').readFileSync('/tmp/pw-results.json')).stats||{}; console.log(s.expected??s.passed??0)")
+            TOTAL=$(node  -e "const s=JSON.parse(require('fs').readFileSync('/tmp/pw-results.json')).stats||{}; console.log(s.total??(s.expected??0)+(s.unexpected??0))")
           else
             PASSED=0; TOTAL=0
           fi
@@ -215,14 +219,11 @@ jobs:
         id: count
         if: always()
         run: |
-          COUNT=$(python3 -c "
-          import json, sys
-          try:
-            d = json.load(open('trivy-results.sarif'))
-            results = d.get('runs', [{}])[0].get('results', [])
-            print(len(results))
-          except:
-            print(0)
+          COUNT=$(node -e "
+            try {
+              const d = JSON.parse(require('fs').readFileSync('trivy-results.sarif','utf8'));
+              console.log((d.runs?.[0]?.results??[]).length);
+            } catch { console.log(0); }
           ")
           if [ "$COUNT" -eq 0 ]; then COLOR=brightgreen
           elif [ "$COUNT" -le 5 ]; then COLOR=yellow
@@ -254,35 +255,34 @@ jobs:
           TEST_COLOR=brightgreen
           [ "$TESTS_PASSED" != "$TESTS_TOTAL" ] && TEST_COLOR=red
 
-          python3 << 'EOF'
-          import json, os, urllib.request
-
-          def badge(label, message, color):
-              return json.dumps({"schemaVersion":1,"label":label,"message":message,"color":color})
-
-          files = {
-            "orkllm-tests.json": {
-              "content": badge("tests",
-                f"{os.environ['TESTS_PASSED']}/{os.environ['TESTS_TOTAL']} passing",
-                os.environ.get('TEST_COLOR','brightgreen'))
+          node << 'EOF'
+          const https = require('https');
+          const badge = (label, message, color) =>
+            JSON.stringify({ schemaVersion: 1, label, message, color });
+          const files = {
+            'orkllm-tests.json': {
+              content: badge('tests',
+                `${process.env.TESTS_PASSED}/${process.env.TESTS_TOTAL} passing`,
+                process.env.TEST_COLOR || 'brightgreen')
             },
-            "orkllm-vulns.json": {
-              "content": badge("vulnerabilities",
-                f"{os.environ['VULN_COUNT']} HIGH/CRIT",
-                os.environ['VULN_COLOR'])
+            'orkllm-vulns.json': {
+              content: badge('vulnerabilities',
+                `${process.env.VULN_COUNT} HIGH/CRIT`,
+                process.env.VULN_COLOR)
             },
-          }
-
-          payload = json.dumps({"files": files}).encode()
-          req = urllib.request.Request(
-            f"https://api.github.com/gists/{os.environ['GIST_ID']}",
-            data=payload, method="PATCH",
-            headers={
-              "Authorization": f"token {os.environ['GIST_TOKEN']}",
-              "Content-Type": "application/json",
-              "Accept": "application/vnd.github+json",
-            }
-          )
-          with urllib.request.urlopen(req) as r:
-            print("Badge gist updated:", r.status)
+          };
+          const payload = JSON.stringify({ files });
+          const req = https.request(
+            `https://api.github.com/gists/${process.env.GIST_ID}`,
+            { method: 'PATCH', headers: {
+              'Authorization': `token ${process.env.GIST_TOKEN}`,
+              'Content-Type': 'application/json',
+              'Accept': 'application/vnd.github+json',
+              'User-Agent': 'orkllm-ci',
+              'Content-Length': Buffer.byteLength(payload),
+            }},
+            res => { console.log('Badge gist updated:', res.statusCode); res.resume(); }
+          );
+          req.on('error', e => { console.error(e); process.exit(1); });
+          req.end(payload);
           EOF
