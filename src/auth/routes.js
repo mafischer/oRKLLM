@@ -42,7 +42,6 @@ export default async function authRoutes(fastify, options) {
     }
 
     reply.setCookie('oidc_state', state, { path: '/', httpOnly: true, maxAge: 600 });
-    reply.setCookie('oidc_nonce', nonce,  { path: '/', httpOnly: true, maxAge: 600 });
 
     const params = new URLSearchParams({
       response_type: 'code',
@@ -74,7 +73,6 @@ export default async function authRoutes(fastify, options) {
         redirect_uri: c.redirectUri,
         scope: 'openid profile email',
         state,
-        nonce,
         ...additionalParams,
       });
       return reply.redirect(authUrl.href);
@@ -102,10 +100,8 @@ export default async function authRoutes(fastify, options) {
       const config = await oidc.discovery(new URL(c.issuer), c.clientId, c.clientSecret || undefined,
         undefined, { execute: [oidc.allowInsecureRequests] });
 
-      // Only validate nonce if the cookie is present — omit to skip check if missing
-      const storedNonce = request.cookies.oidc_nonce;
+      // PKCE (code_verifier) provides security — nonce not sent, so not checked
       const checks = { expectedState: storedState };
-      if (storedNonce) checks.nonce = storedNonce;
       if (isPublicClient && codeVerifier) checks.pkceCodeVerifier = codeVerifier;
 
       // Reconstruct the callback URL using the registered redirectUri (preserves port)
@@ -141,7 +137,7 @@ export default async function authRoutes(fastify, options) {
 
     issueSessionCookie(reply, { id: user.id, username: user.username, role: user.role });
     logAudit(request, { id: user.id, username: user.username }, 'oidc_login');
-    reply.clearCookie('oidc_state').clearCookie('oidc_nonce').clearCookie('oidc_cv');
+    reply.clearCookie('oidc_state').clearCookie('oidc_cv');
     return reply.redirect('/');
   });
 
