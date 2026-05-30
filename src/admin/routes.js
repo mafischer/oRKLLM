@@ -11,7 +11,7 @@ import {
   dbGetSetting, dbSetSetting, dbGetModelSettings, dbSetModelSettings, dbDeleteModelSettings,
   dbCreateUser, dbGetUserById, dbGetUserByUsername, dbGetUserBySubject, dbListUsers, dbUpdateUser, dbUsersEmpty,
   dbGetAuthProviderConfig, dbSetAuthProviderConfig, dbClearAuthProviderConfig,
-  dbLogAudit, dbGetAuditLog,
+  dbLogAudit, dbGetAuditLog, dbGetSchemaVersion,
 } from '../db.js';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -220,6 +220,7 @@ export default async function adminRoutes(fastify, options) {
     status.networkAddresses = getNetworkAddresses();
     status.port = port;
     status.libPath = LIBRKLLMRT_PATH;
+    status.schemaVersion = dbGetSchemaVersion();
     return status;
   });
 
@@ -298,6 +299,8 @@ export default async function adminRoutes(fastify, options) {
         cacheColdLimitMB:      parseInt(dbGetSetting('cache_cold_limit_mb')         ?? String(10 * 1024)),
         cacheDir:              dbGetSetting('cache_dir') ?? '',
         cacheMaxContextTokens: parseInt(dbGetSetting('cache_max_context_tokens')    ?? '3500'),
+        localAuthDisabled: dbGetSetting('local_auth_disabled') === '1',
+        trustedProxy: dbGetSetting('trusted_proxy') ?? '',
       },
       cacheStats: getCacheStats()
     };
@@ -307,7 +310,7 @@ export default async function adminRoutes(fastify, options) {
   fastify.post('/global-settings', async (request, reply) => {
     const { idleTimeoutMinutes, temperature, topP, topK, maxNewTokens, repPenalty, hfToken,
             cacheEnabled, cacheHotLimitMB, cacheColdLimitMB, cacheDir, cacheMaxContextTokens,
-            localAuthDisabled } = request.body || {};
+            localAuthDisabled, trustedProxy } = request.body || {};
     if (typeof idleTimeoutMinutes === 'number') {
       pool.setIdleTimeout(idleTimeoutMinutes);
     }
@@ -323,6 +326,7 @@ export default async function adminRoutes(fastify, options) {
     if (typeof cacheDir === 'string')         dbSetSetting('cache_dir',                 cacheDir);
     if (typeof cacheMaxContextTokens === 'number') dbSetSetting('cache_max_context_tokens', cacheMaxContextTokens);
     if (typeof localAuthDisabled === 'boolean') dbSetSetting('local_auth_disabled', localAuthDisabled ? '1' : '0');
+    if (typeof trustedProxy === 'string') dbSetSetting('trusted_proxy', trustedProxy);
     logAudit(request, 'settings_change', null);
     return { success: true };
   });

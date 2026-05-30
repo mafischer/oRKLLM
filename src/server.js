@@ -45,11 +45,25 @@ process.stderr.write = function (chunk, encoding, callback) {
   return originalStderrWrite.apply(process.stderr, arguments);
 };
 
+// Trusted proxy: trust X-Forwarded-* headers from nginx/reverse proxies
+// Configurable via ORKLLM_TRUSTED_PROXY env var or stored setting
+import { dbGetSetting } from './db.js';
+
+function getTrustedProxy() {
+  const env = process.env.ORKLLM_TRUSTED_PROXY;
+  if (env) return env === 'true' ? true : env; // 'true' = trust all, or specific IP/CIDR
+  try {
+    const stored = dbGetSetting('trusted_proxy');
+    if (stored === 'true') return true;
+    if (stored) return stored;
+  } catch {}
+  return false;
+}
+
 // Create Fastify Server
 const fastify = Fastify({
-  logger: {
-    level: 'info'
-  }
+  logger: { level: 'info' },
+  trustProxy: getTrustedProxy(),
 });
 
 // Register plugins

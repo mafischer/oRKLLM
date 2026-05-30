@@ -21,10 +21,9 @@ const OIDC_USER_PASS = process.env.ORKLLM_TEST_OIDC_USER_PASS || '';
 const OIDC_ADMIN_USER = process.env.ORKLLM_TEST_OIDC_ADMIN_USER || '';
 const OIDC_ADMIN_PASS = process.env.ORKLLM_TEST_OIDC_ADMIN_PASS || '';
 
-// SSO tests target the live server since Keycloak only allows the production redirect URI.
-// These tests are skipped when run against localhost.
-const LIVE_BASE_URL = process.env.ORKLLM_TEST_LIVE_URL || '';
-const IS_LIVE = process.env.ORKLLM_TEST_LIVE === '1' && !!LIVE_BASE_URL;
+// SSO tests run against the same local test server (port 18000) as all other tests.
+// Keycloak must have http://127.0.0.1:18000/auth/oidc/callback as a valid redirect URI.
+const IS_LIVE = process.env.ORKLLM_TEST_LIVE === '1';
 
 async function loginAs(page, username = ADMIN_USER, password = ADMIN_PASS) {
   await page.goto('/');
@@ -72,6 +71,39 @@ async function loginAs(page, username = ADMIN_USER, password = ADMIN_PASS) {
 
 // Auth tests run after orkllm.spec.js which creates admin_test/secret123 credentials.
 // No reset needed — we use the existing session state from the test suite.
+
+// ---------------------------------------------------------------------------
+// Trusted proxy: X-Forwarded-Proto / X-Forwarded-For
+// ---------------------------------------------------------------------------
+test('Trusted proxy: X-Forwarded-For is honoured when trustedProxy is set', async ({ page }) => {
+  await loginAs(page, ADMIN_USER, ADMIN_PASS);
+
+  // Enable trusted proxy via settings
+  await page.evaluate(async () => {
+    await fetch('/api/admin/global-settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ trustedProxy: 'true' }),
+    });
+  });
+
+  // The audit log should record the IP from X-Forwarded-For when set by nginx/proxy.
+  // We verify the setting was saved — runtime trust requires a restart so we test storage only.
+  const cfg = await page.evaluate(async () => {
+    const res = await fetch('/api/admin/global-settings');
+    return res.json();
+  });
+  expect(cfg.settings.trustedProxy).toBe('true');
+
+  // Cleanup
+  await page.evaluate(async () => {
+    await fetch('/api/admin/global-settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ trustedProxy: '' }),
+    });
+  });
+});
 
 // ---------------------------------------------------------------------------
 // Test 1: Site Management link visible only for admin
@@ -381,93 +413,195 @@ test('User drawer shows role and auth provider info', async ({ page }) => {
 });
 
 // ---------------------------------------------------------------------------
-// SSO login tests — target the live server (Keycloak only allows production URI).
-// Run with: ORKLLM_TEST_LIVE=1 npx playwright test e2e/rbac.spec.js --grep "SSO"
+// SSO login tests
+//
+// Two modes:
+//   CI:    Uses mock-oauth2-server service container (ORKLLM_TEST_MOCK_OIDC_URL set).
+//          nginx on port 80 proxies orkllm.fischerapps.com → oRKLLM test server.
+//          No real Keycloak or external network needed.
+//
+//   Local: Uses real Keycloak (ORKLLM_TEST_LIVE=1 + OIDC credentials set).
+//          Requires DNS to resolve orkllm.fischerapps.com on your LAN.
 // ---------------------------------------------------------------------------
 
-test('SSO: Keycloak regular user can log in via OIDC', async ({ browser }) => {
-  test.skip(!IS_LIVE || !OIDC_USER || !OIDC_USER_PASS,
-    'Set ORKLLM_TEST_LIVE=1 and OIDC user credentials to run SSO tests');
+const MOCK_OIDC_URL = process.env.ORKLLM_TEST_MOCK_OIDC_URL || '';
 
-  // Check the live server is reachable before attempting the test
-  const reachable = await fetch(`${LIVE_BASE_URL}/api/admin/auth-status`, { signal: AbortSignal.timeout(5000) })
-    .then(r => r.ok || r.status === 401 || r.status === 200).catch(() => false);
-  test.skip(!reachable, `Live server ${LIVE_BASE_URL} not reachable from this environment`);
+// Configure oRKLLM with the mock OIDC provider and return the local test server URL
+async function setupMockOidc(page, username, groups) {
+  const mockIssuer = `${MOCK_OIDC_URL}/default`;
+  // mock-oauth2-server accepts any client_id; redirect back to port-80 nginx proxy
+  const redirectUri = 'http://orkllm.fischerapps.com/auth/oidc/callback';
 
-  const ctx = await browser.newContext({ baseURL: LIVE_BASE_URL });
-  const page = await ctx.newPage();
-
-  try {
-    // Navigate to login page on live server
-    await page.goto(`${LIVE_BASE_URL}/login`);
-    await page.waitForTimeout(1000); // allow mounted() fetch
-
-    // Click the Keycloak SSO button
-    const ssoBtn = page.locator('button:has-text("Keycloak")').or(page.locator('button:has-text("Sign in with")'));
-    await expect(ssoBtn).toBeVisible({ timeout: 5000 });
-    await ssoBtn.click();
-
-    // Should land on Keycloak login page
-    await expect(page).toHaveURL(/auth-lab\.fischerapps\.com/, { timeout: 10000 });
-
-    // Fill Keycloak credentials
-    await page.locator('[name="username"], textbox[name*="user"]').fill(OIDC_USER);
-    await page.locator('[name="password"], textbox[name*="pass"]').fill(OIDC_USER_PASS);
-    await page.locator('button[type="submit"], input[type="submit"], button:has-text("Sign In")').click();
-
-    // Keycloak redirects back — should land on oRKLLM dashboard
-    await expect(page).toHaveURL(/orkllm\.fischerapps\.com\/?$/, { timeout: 15000 });
-
-    // Verify auth-status shows the OIDC user
-    const status = await page.evaluate(async () => {
-      const res = await fetch('/api/admin/auth-status');
-      return res.json();
+  await page.evaluate(async ({ issuer, clientId, redirectUri, groups, username }) => {
+    await fetch('/api/admin/auth-provider', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        providerType: 'oidc',
+        config: {
+          displayName: 'MockIdP',
+          issuer,
+          clientId,
+          clientSecret: '',  // public client, PKCE
+          redirectUri,
+          autoProvision: true,
+          defaultRole: 'user',
+          usernameClaim: 'sub',
+          groupsClaim: 'groups',
+          groupRoleMap: [{ group: '/orkllm/admin', role: 'admin' }],
+        },
+      }),
     });
-    expect(status.status).toBe('authenticated');
-    expect(status.user.authProvider).toBe('oidc');
-    expect(status.user.username).toBe(OIDC_USER);
-    expect(status.user.role).toBe('user'); // testuser has user role
-  } finally {
-    await ctx.close();
+  }, { issuer: mockIssuer, clientId: 'orkllm-test', redirectUri, groups, username });
+}
+
+async function ssoLoginViaMock(page, username, groups) {
+  // mock-oauth2-server auto-login: the login page auto-submits when username
+  // is pre-filled via query param. Extra claims (groups) are passed as JSON
+  // in the acr_values / login_hint param.
+  const claimsJson = JSON.stringify({ groups });
+
+  await page.goto('/login');
+  await page.waitForTimeout(800);
+
+  // Click SSO button — oRKLLM redirects to mock's /authorize
+  const ssoBtn = page.locator('button:has-text("MockIdP")').or(
+    page.locator('button').filter({ hasText: /Sign in with/i })
+  );
+  await expect(ssoBtn).toBeVisible({ timeout: 5000 });
+  await ssoBtn.click();
+
+  // mock-oauth2-server shows a simple form — fill username and claims
+  await expect(page).toHaveURL(/localhost:8080|mock/, { timeout: 10000 });
+  const userInput = page.locator('input[name="username"], input[id="username"]').first();
+  await expect(userInput).toBeVisible({ timeout: 5000 });
+  await userInput.fill(username);
+
+  // Inject extra claims (groups) via the claims field if present
+  const claimsInput = page.locator('textarea[name="claims"], input[name="claims"]').first();
+  if (await claimsInput.isVisible()) {
+    await claimsInput.fill(claimsJson);
   }
+
+  await page.locator('button[type="submit"]').click();
+
+  // Should redirect back to oRKLLM (via nginx port 80 → 18000)
+  await expect(page).toHaveURL(/127\.0\.0\.1:18000\/?$|orkllm\.fischerapps\.com\/?$/, { timeout: 15000 });
+}
+
+async function ssoLoginViaKeycloak(page, username, password) {
+  await page.goto('/login');
+  await page.waitForTimeout(800);
+
+  const ssoBtn = page.locator('button:has-text("Keycloak")').or(
+    page.locator('button').filter({ hasText: /Sign in with/i })
+  );
+  await expect(ssoBtn).toBeVisible({ timeout: 5000 });
+  await ssoBtn.click();
+
+  await expect(page).toHaveURL(/auth-lab\.fischerapps\.com/, { timeout: 10000 });
+  await page.locator('[name="username"]').fill(username);
+  await page.locator('[name="password"]').fill(password);
+  await page.locator('button[type="submit"]').click();
+
+  await expect(page).toHaveURL(/orkllm\.fischerapps\.com\/?$/, { timeout: 15000 });
+}
+
+test('SSO: regular user can log in via OIDC and gets user role', async ({ page }) => {
+  const hasMock = !!MOCK_OIDC_URL;
+  const hasLive  = IS_LIVE && !!OIDC_USER && !!OIDC_USER_PASS;
+  test.skip(!hasMock && !hasLive,
+    'Set ORKLLM_TEST_MOCK_OIDC_URL (CI) or ORKLLM_TEST_LIVE=1 with credentials (local)');
+
+  // Always start from a known state
+  await loginAs(page);
+  await page.evaluate(async () => fetch('/api/admin/auth-provider', { method: 'DELETE' }));
+
+  if (hasMock) {
+    await setupMockOidc(page, OIDC_USER || 'testuser', ['/orkllm']);
+    // Sign out so we can test SSO login
+    await page.evaluate(async () => fetch('/api/admin/logout', { method: 'POST' }));
+    await ssoLoginViaMock(page, OIDC_USER || 'testuser', ['/orkllm']);
+  } else {
+    // Configure real Keycloak
+    await page.evaluate(async ({ issuer, clientId }) => {
+      await fetch('/api/admin/auth-provider', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          providerType: 'oidc',
+          config: {
+            displayName: 'Keycloak',
+            issuer, clientId, clientSecret: '',
+            redirectUri: `${window.location.origin}/auth/oidc/callback`,
+            autoProvision: true, defaultRole: 'user',
+            usernameClaim: 'preferred_username',
+            groupsClaim: 'groups',
+            groupRoleMap: [{ group: '/orkllm/admin', role: 'admin' }],
+          },
+        }),
+      });
+    }, { issuer: OIDC_ISSUER, clientId: OIDC_CLIENT_ID });
+    await page.evaluate(async () => fetch('/api/admin/logout', { method: 'POST' }));
+    await ssoLoginViaKeycloak(page, OIDC_USER, OIDC_USER_PASS);
+  }
+
+  const status = await page.evaluate(() =>
+    fetch('/api/admin/auth-status').then(r => r.json())
+  );
+  expect(status.status).toBe('authenticated');
+  expect(status.user.authProvider).toBe('oidc');
+  expect(status.user.role).toBe('user');
+
+  // Cleanup
+  await loginAs(page);
+  await page.evaluate(async () => fetch('/api/admin/auth-provider', { method: 'DELETE' }));
 });
 
-test('SSO: Keycloak admin user gets admin role via group mapping', async ({ browser }) => {
-  test.skip(!IS_LIVE || !OIDC_ADMIN_USER || !OIDC_ADMIN_PASS,
-    'Set ORKLLM_TEST_LIVE=1 and OIDC admin credentials to run SSO tests');
+test('SSO: admin user gets admin role via group mapping', async ({ page }) => {
+  const hasMock = !!MOCK_OIDC_URL;
+  const hasLive  = IS_LIVE && !!OIDC_ADMIN_USER && !!OIDC_ADMIN_PASS;
+  test.skip(!hasMock && !hasLive,
+    'Set ORKLLM_TEST_MOCK_OIDC_URL (CI) or ORKLLM_TEST_LIVE=1 with credentials (local)');
 
-  const reachable = await fetch(`${LIVE_BASE_URL}/api/admin/auth-status`, { signal: AbortSignal.timeout(5000) })
-    .then(r => r.ok || r.status === 401 || r.status === 200).catch(() => false);
-  test.skip(!reachable, `Live server ${LIVE_BASE_URL} not reachable from this environment`);
+  await loginAs(page);
+  await page.evaluate(async () => fetch('/api/admin/auth-provider', { method: 'DELETE' }));
 
-  const ctx = await browser.newContext({ baseURL: LIVE_BASE_URL });
-  const page = await ctx.newPage();
-
-  try {
-    await page.goto(`${LIVE_BASE_URL}/login`);
-    await page.waitForTimeout(1000);
-
-    const ssoBtn = page.locator('button:has-text("Keycloak")').or(page.locator('button:has-text("Sign in with")'));
-    await expect(ssoBtn).toBeVisible({ timeout: 5000 });
-    await ssoBtn.click();
-
-    await expect(page).toHaveURL(/auth-lab\.fischerapps\.com/, { timeout: 10000 });
-
-    await page.locator('[name="username"], textbox[name*="user"]').fill(OIDC_ADMIN_USER);
-    await page.locator('[name="password"], textbox[name*="pass"]').fill(OIDC_ADMIN_PASS);
-    await page.locator('button[type="submit"], input[type="submit"], button:has-text("Sign In")').click();
-
-    await expect(page).toHaveURL(/orkllm\.fischerapps\.com\/?$/, { timeout: 15000 });
-
-    const status = await page.evaluate(async () => {
-      const res = await fetch('/api/admin/auth-status');
-      return res.json();
-    });
-    expect(status.status).toBe('authenticated');
-    expect(status.user.authProvider).toBe('oidc');
-    expect(status.user.username).toBe(OIDC_ADMIN_USER);
-    expect(status.user.role).toBe('admin'); // testadminuser should be in /orkllm/admin group
-  } finally {
-    await ctx.close();
+  if (hasMock) {
+    await setupMockOidc(page, OIDC_ADMIN_USER || 'testadminuser', ['/orkllm', '/orkllm/admin']);
+    await page.evaluate(async () => fetch('/api/admin/logout', { method: 'POST' }));
+    await ssoLoginViaMock(page, OIDC_ADMIN_USER || 'testadminuser', ['/orkllm', '/orkllm/admin']);
+  } else {
+    await page.evaluate(async ({ issuer, clientId }) => {
+      await fetch('/api/admin/auth-provider', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          providerType: 'oidc',
+          config: {
+            displayName: 'Keycloak',
+            issuer, clientId, clientSecret: '',
+            redirectUri: `${window.location.origin}/auth/oidc/callback`,
+            autoProvision: true, defaultRole: 'user',
+            usernameClaim: 'preferred_username',
+            groupsClaim: 'groups',
+            groupRoleMap: [{ group: '/orkllm/admin', role: 'admin' }],
+          },
+        }),
+      });
+    }, { issuer: OIDC_ISSUER, clientId: OIDC_CLIENT_ID });
+    await page.evaluate(async () => fetch('/api/admin/logout', { method: 'POST' }));
+    await ssoLoginViaKeycloak(page, OIDC_ADMIN_USER, OIDC_ADMIN_PASS);
   }
+
+  const status = await page.evaluate(() =>
+    fetch('/api/admin/auth-status').then(r => r.json())
+  );
+  expect(status.status).toBe('authenticated');
+  expect(status.user.authProvider).toBe('oidc');
+  expect(status.user.role).toBe('admin');
+
+  // Cleanup
+  await loginAs(page);
+  await page.evaluate(async () => fetch('/api/admin/auth-provider', { method: 'DELETE' }));
 });

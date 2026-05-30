@@ -55,69 +55,107 @@ try {
   }
 }
 
-const SCHEMA_SQL = `
-  CREATE TABLE IF NOT EXISTS auth (
-    username TEXT PRIMARY KEY,
-    hash TEXT NOT NULL,
-    salt TEXT NOT NULL
-  );
+/**
+ * Schema migrations — append only. Each entry runs exactly once per DB.
+ * Version is tracked via SQLite PRAGMA user_version.
+ *
+ * Rules:
+ *   - Never edit an existing migration — add a new one instead.
+ *   - Each migration receives the raw db instance and must be synchronous.
+ *   - Migrations run inside an implicit transaction per version step.
+ */
+const MIGRATIONS = [
+  {
+    version: 1,
+    description: 'Initial schema: auth, stats, settings, model_settings',
+    up(d) {
+      d.exec(`
+        CREATE TABLE IF NOT EXISTS auth (
+          username TEXT PRIMARY KEY,
+          hash TEXT NOT NULL,
+          salt TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS stats (
+          type TEXT PRIMARY KEY,
+          total_requests INTEGER DEFAULT 0,
+          total_prefill_tokens INTEGER DEFAULT 0,
+          total_generated_tokens INTEGER DEFAULT 0,
+          total_prefill_time_ms REAL DEFAULT 0.0,
+          total_generate_time_ms REAL DEFAULT 0.0
+        );
+        CREATE TABLE IF NOT EXISTS settings (
+          key TEXT PRIMARY KEY,
+          value TEXT
+        );
+        CREATE TABLE IF NOT EXISTS model_settings (
+          model_id TEXT PRIMARY KEY,
+          settings TEXT NOT NULL DEFAULT '{}'
+        );
+        INSERT OR IGNORE INTO stats (type) VALUES ('session');
+        INSERT OR IGNORE INTO stats (type) VALUES ('all_time');
+      `);
+    },
+  },
+  {
+    version: 2,
+    description: 'Multi-user RBAC: users, auth_provider_config, audit_log tables',
+    up(d) {
+      d.exec(`
+        CREATE TABLE IF NOT EXISTS users (
+          id TEXT PRIMARY KEY,
+          username TEXT UNIQUE NOT NULL,
+          email TEXT,
+          role TEXT NOT NULL DEFAULT 'user',
+          auth_provider TEXT NOT NULL DEFAULT 'local',
+          auth_subject TEXT,
+          password_hash TEXT,
+          password_salt TEXT,
+          is_active INTEGER NOT NULL DEFAULT 1,
+          created_at INTEGER NOT NULL,
+          last_login_at INTEGER
+        );
+        CREATE TABLE IF NOT EXISTS auth_provider_config (
+          id INTEGER PRIMARY KEY,
+          provider_type TEXT,
+          config TEXT NOT NULL DEFAULT '{}'
+        );
+        CREATE TABLE IF NOT EXISTS audit_log (
+          id TEXT PRIMARY KEY,
+          user_id TEXT,
+          username TEXT,
+          action TEXT NOT NULL,
+          resource TEXT,
+          ip_address TEXT,
+          timestamp INTEGER NOT NULL
+        );
+      `);
+    },
+  },
+];
 
-  CREATE TABLE IF NOT EXISTS users (
-    id TEXT PRIMARY KEY,
-    username TEXT UNIQUE NOT NULL,
-    email TEXT,
-    role TEXT NOT NULL DEFAULT 'user',
-    auth_provider TEXT NOT NULL DEFAULT 'local',
-    auth_subject TEXT,
-    password_hash TEXT,
-    password_salt TEXT,
-    is_active INTEGER NOT NULL DEFAULT 1,
-    created_at INTEGER NOT NULL,
-    last_login_at INTEGER
-  );
+const LATEST_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;
 
-  CREATE TABLE IF NOT EXISTS auth_provider_config (
-    id INTEGER PRIMARY KEY,
-    provider_type TEXT,
-    config TEXT NOT NULL DEFAULT '{}'
-  );
+function runMigrations(d) {
+  // PRAGMA user_version stores the current schema version as an integer
+  const current = d.prepare('PRAGMA user_version').get()['user_version'] ?? 0;
+  if (current >= LATEST_VERSION) return;
 
-  CREATE TABLE IF NOT EXISTS audit_log (
-    id TEXT PRIMARY KEY,
-    user_id TEXT,
-    username TEXT,
-    action TEXT NOT NULL,
-    resource TEXT,
-    ip_address TEXT,
-    timestamp INTEGER NOT NULL
-  );
-
-  CREATE TABLE IF NOT EXISTS stats (
-    type TEXT PRIMARY KEY,
-    total_requests INTEGER DEFAULT 0,
-    total_prefill_tokens INTEGER DEFAULT 0,
-    total_generated_tokens INTEGER DEFAULT 0,
-    total_prefill_time_ms REAL DEFAULT 0.0,
-    total_generate_time_ms REAL DEFAULT 0.0
-  );
-
-  CREATE TABLE IF NOT EXISTS settings (
-    key TEXT PRIMARY KEY,
-    value TEXT
-  );
-
-  CREATE TABLE IF NOT EXISTS model_settings (
-    model_id TEXT PRIMARY KEY,
-    settings TEXT NOT NULL DEFAULT '{}'
-  );
-`;
+  const pending = MIGRATIONS.filter(m => m.version > current);
+  for (const migration of pending) {
+    try {
+      migration.up(d);
+      // Update version — PRAGMA cannot be parameterised, so interpolate directly
+      d.exec(`PRAGMA user_version = ${migration.version}`);
+      console.log(`[Database] Migration v${migration.version} applied: ${migration.description}`);
+    } catch (e) {
+      console.error(`[Database] Migration v${migration.version} FAILED:`, e.message);
+      throw e;
+    }
+  }
+}
 
 function initDb(dbInstance) {
-  dbInstance.exec(SCHEMA_SQL);
-  dbInstance.exec(`
-    INSERT OR IGNORE INTO stats (type) VALUES ('session');
-    INSERT OR IGNORE INTO stats (type) VALUES ('all_time');
-  `);
+  runMigrations(dbInstance);
   return dbInstance;
 }
 
@@ -267,7 +305,13 @@ export function dbResetForTesting() {
   withReconnect(d => {
     d.exec('DELETE FROM auth; DELETE FROM users; DELETE FROM auth_provider_config; DELETE FROM audit_log; DELETE FROM settings; DELETE FROM model_settings;');
     d.exec(`INSERT OR IGNORE INTO stats (type) VALUES ('session'); INSERT OR IGNORE INTO stats (type) VALUES ('all_time');`);
+    // Keep user_version intact — schema tables already exist, no need to re-migrate
   });
+}
+
+/** Return current schema version (for diagnostics/admin UI) */
+export function dbGetSchemaVersion() {
+  return withReconnect(d => d.prepare('PRAGMA user_version').get()['user_version'] ?? 0);
 }
 
 // ── Users ──────────────────────────────────────────────────────────────────

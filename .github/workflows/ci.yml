@@ -19,9 +19,46 @@ jobs:
       tests_passed: ${{ steps.results.outputs.passed }}
       tests_total:  ${{ steps.results.outputs.total }}
 
+    services:
+      mock-oidc:
+        image: ghcr.io/navikt/mock-oauth2-server:4.0.0
+        ports:
+          - 8080:8080
+        options: >-
+          --health-cmd "curl -sf http://localhost:8080/default/.well-known/openid-configuration"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Configure /etc/hosts and nginx for SSO tests
+        run: |
+          # Map orkllm.fischerapps.com to localhost so OIDC redirect URI resolves
+          echo "127.0.0.1 orkllm.fischerapps.com" | sudo tee -a /etc/hosts
+
+          # nginx on port 80 → oRKLLM test server on 18000
+          # Allows http://orkllm.fischerapps.com/auth/oidc/callback as redirect URI
+          sudo apt-get install -y -q nginx
+          sudo tee /etc/nginx/sites-available/orkllm > /dev/null << 'NGINX'
+          server {
+            listen 80;
+            server_name orkllm.fischerapps.com;
+            location / {
+              proxy_pass http://127.0.0.1:18000;
+              proxy_set_header Host $host;
+              proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+              proxy_http_version 1.1;
+              proxy_set_header Upgrade $http_upgrade;
+              proxy_set_header Connection "upgrade";
+            }
+          }
+          NGINX
+          sudo ln -sf /etc/nginx/sites-available/orkllm /etc/nginx/sites-enabled/orkllm
+          sudo rm -f /etc/nginx/sites-enabled/default
+          sudo nginx -t && sudo systemctl start nginx
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -73,6 +110,8 @@ jobs:
           ORKLLM_TEST_OIDC_ADMIN_PASS: ${{ secrets.ORKLLM_TEST_OIDC_ADMIN_PASS }}
           ORKLLM_TEST_LIVE: ${{ vars.ORKLLM_TEST_LIVE }}
           ORKLLM_TEST_LIVE_URL: ${{ vars.ORKLLM_TEST_LIVE_URL }}
+          # Mock OIDC server for SSO integration tests (runs as service container)
+          ORKLLM_TEST_MOCK_OIDC_URL: http://localhost:8080
 
       - name: Parse test results
         id: results

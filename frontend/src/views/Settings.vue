@@ -45,6 +45,24 @@
         <v-alert type="info" variant="tonal" density="compact" class="mt-3 text-caption">
           Host, Port, and paths are configured via environment variables and require a server restart to change.
         </v-alert>
+        <v-divider class="my-4"></v-divider>
+        <div class="text-subtitle-2 font-weight-medium mb-1">Trusted Proxy</div>
+        <div class="text-caption text-grey mb-3">
+          Trust <code>X-Forwarded-For</code> / <code>X-Forwarded-Proto</code> headers from a reverse proxy (nginx, Cloudflare, etc.).
+          Use <code>true</code> to trust all proxies, or enter a specific IP/CIDR (e.g. <code>10.0.0.0/8</code>).
+          Required when running behind nginx for OIDC/SAML redirect URIs to use the correct scheme.
+          Takes effect on next server restart.
+        </div>
+        <v-text-field
+          v-model="settings.trustedProxy"
+          label="Trusted Proxy"
+          placeholder="false (disabled) | true (all) | 10.0.0.0/8"
+          variant="outlined"
+          density="compact"
+          hide-details
+          class="font-mono"
+          style="max-width: 360px;"
+        ></v-text-field>
       </v-card>
 
       <!-- Authentication -->
@@ -321,6 +339,7 @@ export default {
       cacheColdLimitMB: 10240,
       cacheDir: '',
       cacheMaxContextTokens: 3500,
+      trustedProxy: '',
     },
     cacheStats: null,
     clearingCache: false,
@@ -371,6 +390,7 @@ export default {
         this.settings.cacheColdLimitMB      = s.cacheColdLimitMB ?? 10240;
         this.settings.cacheDir              = s.cacheDir ?? '';
         this.settings.cacheMaxContextTokens = s.cacheMaxContextTokens ?? 3500;
+        this.settings.trustedProxy          = s.trustedProxy ?? '';
         this.cacheStats = data.cacheStats || null;
       } catch (e) {}
     },
