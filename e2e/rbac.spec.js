@@ -498,14 +498,14 @@ test('SSO: regular user logs in via OIDC and gets user role', async ({ page }) =
     expect(status.user.authProvider).toBe('oidc');
     expect(status.user.role).toBe('user');
   } finally {
-    // Delete auth provider and log back in via API (not UI — OIDC button may block form)
+    // Log in via API first (establishes session cookie), then delete the provider
     await page.evaluate(async ([u, p]) => {
-      await fetch('/api/admin/auth-provider', { method: 'DELETE' });
       await fetch('/api/admin/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username: u, password: p }),
       });
+      await fetch('/api/admin/auth-provider', { method: 'DELETE' });
     }, [ADMIN_USER, ADMIN_PASS]);
   }
 });
@@ -530,12 +530,12 @@ test('SSO: admin user gets admin role via /orkllm/admin group mapping', async ({
     expect(status.user.role).toBe('admin');
   } finally {
     await page.evaluate(async ([u, p]) => {
-      await fetch('/api/admin/auth-provider', { method: 'DELETE' });
       await fetch('/api/admin/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username: u, password: p }),
       });
+      await fetch('/api/admin/auth-provider', { method: 'DELETE' });
     }, [ADMIN_USER, ADMIN_PASS]);
   }
 });

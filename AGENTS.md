@@ -28,6 +28,16 @@ oRKLLM is a **Node.js / JavaScript project end-to-end**. All tooling decisions s
 - Use `node -e "..."` or inline `node << 'EOF' ... EOF` in shell scripts and CI workflows.
 - **Never default to Python** unless it is the only viable option (e.g. `rkllm-toolkit` model conversion, which is a Python-only SDK). If you reach for `python3`, stop and ask whether Node.js can do it instead.
 
+### Documentation review on every commit
+
+**Before committing any change**, review `AGENTS.md` and `README.md` to determine if they need updating:
+
+- Did you add, remove, or rename a source file, API endpoint, env variable, or feature? → Update **both** files.
+- Did you change a CI workflow, test command, or deployment step? → Update the relevant section.
+- Minor bug fixes and test-only changes typically don't require doc updates, but verify.
+
+This is a soft requirement — use judgement. The goal is to keep docs reflecting reality so that future agents and contributors don't have to reverse-engineer what changed.
+
 Examples of what this means in practice:
 
 | Task | ✅ Correct | ❌ Avoid |
