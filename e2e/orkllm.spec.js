@@ -2,6 +2,17 @@ import { test, expect } from '@playwright/test';
 import fs from 'fs';
 import path from 'path';
 
+// Credentials are sourced from env so they're consistent across all spec files.
+// Throw early if they're missing in CI rather than getting a cryptic 401.
+const ADMIN_USER = process.env.ORKLLM_TEST_ADMIN_USER;
+const ADMIN_PASS = process.env.ORKLLM_TEST_ADMIN_PASS;
+if (!ADMIN_USER || !ADMIN_PASS) {
+  throw new Error(
+    'ORKLLM_TEST_ADMIN_USER and ORKLLM_TEST_ADMIN_PASS must be set. ' +
+    'Add them to your .env file locally or as GitHub Actions secrets in CI.'
+  );
+}
+
 const modelsDir = path.resolve('./models');
 const dummyModelName = 'qwen_1.8b.rkllm';
 const dummyModelPath = path.join(modelsDir, dummyModelName);
@@ -24,7 +35,7 @@ function navBtn(page, label) {
   return page.locator(`.v-app-bar .v-btn:has-text("${label}")`);
 }
 
-async function login(page, username = 'admin_test', password = 'secret123') {
+async function login(page, username = ADMIN_USER, password = ADMIN_PASS) {
   await page.goto('/');
   await expect(page).toHaveURL(/\/login/, { timeout: 8000 });
   await page.locator('input[type="text"]').fill(username);
@@ -64,9 +75,9 @@ test('Setup, auth enforcement, and login', async ({ page }) => {
   await expect(page).toHaveURL(/\/setup/, { timeout: 8000 });
   await expect(page.locator('h1')).toContainText('oRKLLM Setup');
 
-  await page.locator('input[type="text"]').fill('admin_test');
-  await page.locator('input[type="password"]').first().fill('secret123');
-  await page.locator('input[type="password"]').nth(1).fill('secret123');
+  await page.locator('input[type="text"]').fill(ADMIN_USER);
+  await page.locator('input[type="password"]').first().fill(ADMIN_PASS);
+  await page.locator('input[type="password"]').nth(1).fill(ADMIN_PASS);
   await page.click('button:has-text("Initialize Server")');
 
   await expect(page).toHaveURL(/http:\/\/127.0.0.1:18000\/?$/, { timeout: 8000 });
@@ -79,13 +90,13 @@ test('Setup, auth enforcement, and login', async ({ page }) => {
   await expect(page).toHaveURL(/\/login/);
 
   // Wrong password
-  await page.locator('input[type="text"]').fill('admin_test');
+  await page.locator('input[type="text"]').fill(ADMIN_USER);
   await page.locator('input[type="password"]').fill('wrong_pass');
   await page.click('button:has-text("Sign In")');
   await expect(page.locator('.v-alert')).toBeVisible();
 
   // Correct password
-  await page.locator('input[type="password"]').fill('secret123');
+  await page.locator('input[type="password"]').fill(ADMIN_PASS);
   await page.click('button:has-text("Sign In")');
   await expect(page).toHaveURL(/http:\/\/127.0.0.1:18000\/?$/);
 });

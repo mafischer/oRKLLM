@@ -1,9 +1,15 @@
 import { test, expect } from '@playwright/test';
 
+const ADMIN_USER = process.env.ORKLLM_TEST_ADMIN_USER;
+const ADMIN_PASS = process.env.ORKLLM_TEST_ADMIN_PASS;
+if (!ADMIN_USER || !ADMIN_PASS) {
+  throw new Error('ORKLLM_TEST_ADMIN_USER and ORKLLM_TEST_ADMIN_PASS must be set.');
+}
+
 async function login(page) {
   await page.goto('/login');
-  await page.locator('input[type="text"]').fill('admin_test');
-  await page.locator('input[type="password"]').fill('secret123');
+  await page.locator('input[type="text"]').fill(ADMIN_USER);
+  await page.locator('input[type="password"]').fill(ADMIN_PASS);
   await page.click('button:has-text("Sign In")');
   await expect(page).toHaveURL(/http:\/\/127.0.0.1:18000\/?$/, { timeout: 8000 });
 }
@@ -52,7 +58,7 @@ test('User menu: shows signed-in username in drawer', async ({ page }) => {
   const d = drawer(page);
   await expect(d).toBeVisible();
   await expect(d.locator('text=Signed in as')).toBeVisible();
-  await expect(d.locator('text=admin_test')).toBeVisible();
+  await expect(d.locator(`text=${ADMIN_USER}`)).toBeVisible();
 });
 
 test('Theme toggle: label says "Light Mode" when in dark mode', async ({ page }) => {
