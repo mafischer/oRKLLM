@@ -24,12 +24,26 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Start Keycloak and configure nginx in background
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build optimized Keycloak image (cached)
+        uses: docker/build-push-action@v6
+        with:
+          context: ./e2e
+          file: ./e2e/Dockerfile.keycloak
+          tags: orkllm-keycloak-test:latest
+          load: true
+          cache-from: type=gha,scope=keycloak-test
+          cache-to: type=gha,scope=keycloak-test,mode=max
+
+      - name: Start Keycloak and configure nginx
         run: |
-          # Start Keycloak immediately — it boots while Node setup runs in parallel
+          # Start Keycloak with the pre-built optimized image — boots in ~5s
           docker compose -f docker-compose.test.yml up -d
 
-          # Configure /etc/hosts and nginx concurrently (no dependency on Keycloak)
+          # Configure /etc/hosts + nginx so orkllm.fischerapps.com:80 → oRKLLM:18000
+          # Both run in parallel — nginx is done before Keycloak is healthy
           echo "127.0.0.1 orkllm.fischerapps.com" | sudo tee -a /etc/hosts
           sudo apt-get install -y -q nginx
           sudo tee /etc/nginx/sites-available/orkllm > /dev/null << 'NGINX'
@@ -83,14 +97,10 @@ jobs:
 
       - name: Wait for Keycloak to be healthy
         run: |
-          # Block here — Keycloak has been starting since the first step while
-          # Node setup ran. By now it is likely already healthy.
-          echo "Waiting for Keycloak (started in background)..."
-          for i in $(seq 1 60); do
-            STATUS=$(docker inspect --format='{{.State.Health.Status}}' \
-              "$(docker compose -f docker-compose.test.yml ps -q keycloak)" 2>/dev/null)
-            [ "$STATUS" = "healthy" ] && echo "Keycloak healthy after ${i}x2s" && break
-            [ $i -eq 60 ] && echo "Keycloak did not become healthy" && exit 1
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:8080/health/ready > /dev/null 2>&1 \
+              && echo "Keycloak ready after ${i}x2s" && break
+            [ $i -eq 30 ] && docker logs $(docker compose -f docker-compose.test.yml ps -q keycloak) && exit 1
             sleep 2
           done
           curl -sf http://localhost:8080/realms/master/.well-known/openid-configuration \
@@ -115,7 +125,7 @@ jobs:
           ORKLLM_TEST_OIDC_ADMIN_PASS: ${{ secrets.ORKLLM_TEST_OIDC_ADMIN_PASS }}
           ORKLLM_TEST_LIVE: ${{ vars.ORKLLM_TEST_LIVE }}
           ORKLLM_TEST_LIVE_URL: ${{ vars.ORKLLM_TEST_LIVE_URL }}
-          # Keycloak test instance for SSO integration tests (started as Docker container)
+          # Keycloak CI container issuer URL for SSO integration tests
           ORKLLM_TEST_MOCK_OIDC_URL: http://localhost:8080/realms/master
 
       - name: Parse test results
