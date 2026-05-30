@@ -428,11 +428,11 @@ const KC_ADMIN_USER = process.env.ORKLLM_TEST_OIDC_ADMIN_USER || OIDC_ADMIN_USER
 const KC_ADMIN_PASS = process.env.ORKLLM_TEST_OIDC_ADMIN_PASS || OIDC_ADMIN_PASS;
 
 async function configureOidc(page, kcIssuer) {
-  // nginx on port 80 proxies orkllm.fischerapps.com → test server (CI)
-  // For local real Keycloak the redirect URI matches the live server
-  const redirectUri = IS_LIVE && !process.env.ORKLLM_TEST_MOCK_OIDC_URL
-    ? `${LIVE_BASE_URL}/auth/oidc/callback`
-    : 'http://orkllm.fischerapps.com/auth/oidc/callback';
+  // ORKLLM_TEST_REDIRECT_BASE: base URL oRKLLM is reachable at for the OIDC callback.
+  // In CI: http://orkllm.fischerapps.com (nginx on port 80, no TLS).
+  // Live tests: same as LIVE_BASE_URL (https://orkllm.fischerapps.com).
+  const redirectBase = process.env.ORKLLM_TEST_REDIRECT_BASE || LIVE_BASE_URL || 'http://orkllm.fischerapps.com';
+  const redirectUri = `${redirectBase}/auth/oidc/callback`;
 
   await page.evaluate(async ({ issuer, clientId, redirectUri }) => {
     await fetch('/api/admin/auth-provider', {
@@ -469,12 +469,10 @@ async function ssoLogin(page, username, password) {
   await page.locator('[name=password], #password').fill(password);
   await page.locator('button[type=submit], #kc-login').click();
 
-  // Wait for Keycloak to redirect back to oRKLLM (either orkllm.fischerapps.com or 127.0.0.1:18000)
-  // then navigate to the test server root so the session cookie is accessible via baseURL
+  // Wait for Keycloak to redirect back to oRKLLM via the configured redirect base
   await page.waitForURL(/orkllm\.fischerapps\.com|127\.0\.0\.1:18000/, { timeout: 20000 });
 
-  // Navigate to test server root to ensure fetch uses the right origin with the session cookie
-  await page.goto('http://127.0.0.1:18000/');
+  // Poll auth-status using the same origin where the session cookie was set
   await page.waitForFunction(async () => {
     const res = await fetch('/api/admin/auth-status');
     const d = await res.json();

@@ -213,6 +213,7 @@ Set these in `.env` locally (gitignored) or as GitHub Actions secrets/variables.
 | `ORKLLM_TEST_OIDC_ADMIN_USER` | Secret | Keycloak admin test user (`testadminuser`) |
 | `ORKLLM_TEST_OIDC_ADMIN_PASS` | Secret | Keycloak admin test user password |
 | `ORKLLM_TEST_MOCK_OIDC_URL` | Auto-set | Issuer URL of CI Keycloak container (`http://localhost:8080/realms/orkllm`) |
+| `ORKLLM_TEST_REDIRECT_BASE` | Auto-set | Base URL for OIDC `redirect_uri` — derived from this so protocol is correct (`http://` in CI, `https://` live) |
 | `ORKLLM_TEST_LIVE` | Variable | Set to `1` to run SSO tests against real Keycloak on LAN |
 | `ORKLLM_TEST_LIVE_URL` | Variable | Live server URL (e.g. `https://orkllm.fischerapps.com`) |
 

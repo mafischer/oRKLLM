@@ -134,6 +134,8 @@ jobs:
           ORKLLM_TEST_LIVE_URL: ${{ vars.ORKLLM_TEST_LIVE_URL }}
           # Keycloak CI container issuer URL for SSO integration tests
           ORKLLM_TEST_MOCK_OIDC_URL: http://localhost:8080/realms/orkllm
+          # nginx proxy base (HTTP, port 80) — protocol derived from this, not LIVE_BASE_URL
+          ORKLLM_TEST_REDIRECT_BASE: http://orkllm.fischerapps.com
 
       - name: Parse test results
         id: results
