@@ -73,24 +73,26 @@ graph TD
 | `src/pool.js` | Single-active-model lock, auto-swap, idle timeout (configured via SQLite settings) |
 | `src/monitor.js` | Polls CPU, RAM, SoC Temp, NPU load; Rockchip-native on ARM64 Linux, simulated elsewhere |
 | `src/stats.js` | Records prefill/generation tokens and latencies in SQLite |
-| `src/db.js` | SQLite wrapper; tables: auth, users, auth_provider_config, audit_log, stats, settings, model_settings |
+| `src/db.js` | SQLite + PRAGMA user_version migration runner; 2 versioned migrations; all table accessors |
 | `src/config.js` | Env-driven settings; multi-user credential helpers; PBKDF2-HMAC-SHA256 |
 | `src/cache.js` | Tiered SSD prefix KV cache (hot/cold LRU), sliding context window trim |
-| `src/server.js` | Fastify bootstrap; mounts `/ws/metrics`, `/ws/logs`, static SPA, API routes |
+| `src/server.js` | Fastify bootstrap; trustProxy config; mounts `/ws/metrics`, `/ws/logs`, static SPA, API routes |
 | `src/api/routes.js` | `/v1/chat/completions` (SSE streaming + prefix cache), `/v1/models`, `/v1/embeddings` |
-| `src/admin/routes.js` | Auth (local + OIDC + SAML), user CRUD, RBAC, HF proxy, audit log, settings |
+| `src/admin/routes.js` | Auth (local + OIDC + SAML), user CRUD, RBAC, HF proxy, audit log, settings (incl. trustedProxy) |
+| `src/auth/routes.js` | OIDC (PKCE + confidential) and SAML 2.0 routes at `/auth/*` |
+| `src/auth/session.js` | Shared signCookie / verifyCookie / issueSessionCookie (userId\|username\|role\|expires\|HMAC) |
 | `src/mock_engine.js` | JS mock engine streaming realistic fake tokens (for macOS dev) |
-| `frontend/src/components/AppNav.vue` | Shared navbar; Site Management item for admins |
+| `frontend/src/components/AppNav.vue` | Shared navbar; Site Management item for admins; provider chip |
 | `frontend/src/views/Dashboard.vue` | Serving stats, hardware telemetry, inference playground |
 | `frontend/src/views/Models.vue` | Model manager + HF search/collection browser/downloader |
-| `frontend/src/views/Settings.vue` | Global settings, HF token, prefix cache config |
+| `frontend/src/views/Settings.vue` | Global settings, HF token, prefix cache config, trusted proxy |
 | `frontend/src/views/Logs.vue` | Full-page live log terminal (WebSocket) |
 | `frontend/src/views/Bench.vue` | Inference benchmark (TTFT, tok/s) |
 | `frontend/src/views/Chat.vue` | Full streaming chat against OpenAI-compatible API |
 | `frontend/src/views/SiteManagement.vue` | Admin-only: user CRUD, OIDC/SAML config, audit log |
 | `frontend/src/views/Login.vue` | Login page; shows SSO button when OIDC/SAML configured |
 | `e2e/orkllm.spec.js` | Playwright E2E suite (21 tests — core flow) |
-| `e2e/rbac.spec.js` | Playwright E2E suite (31 tests — RBAC, auth provider, Keycloak integration) |
+| `e2e/rbac.spec.js` | Playwright E2E suite (33 tests — RBAC, trusted proxy, mock OIDC SSO, Keycloak integration) |
 
 ---
 
@@ -199,10 +201,20 @@ Tests cover:
 - **Model lifecycle** — scan, load, mock chat stream with prefill/rate metrics
 - **Log terminal** — real-time WebSocket log capture
 - **RBAC** — Site Management visible for admin, user/provider CRUD, SSO button on login
-- **Keycloak OIDC/SAML** — config tests (skipped unless `ORKLLM_TEST_OIDC_CLIENT_SECRET` set)
+- **Trusted proxy** — `trustedProxy` setting saved and returned correctly
+- **Mock OIDC SSO** (CI) — full OIDC authorize → login → callback flow via `mock-oauth2-server`
+- **Real Keycloak SSO** (local, `ORKLLM_TEST_LIVE=1`) — full flow against `auth-lab.fischerapps.com`
+
+### SSO test modes
+
+| Mode | When | How |
+|------|------|-----|
+| **Mock OIDC (CI)** | `ORKLLM_TEST_MOCK_OIDC_URL` is set | `mock-oauth2-server` service container; nginx proxies port 80 → 18000; `/etc/hosts` maps `orkllm.fischerapps.com` → `127.0.0.1` |
+| **Real Keycloak (local)** | `ORKLLM_TEST_LIVE=1` + `ORKLLM_TEST_LIVE_URL` set | Hits real Keycloak at `auth-lab.fischerapps.com`; requires LAN DNS resolution |
+| **Skipped** | Neither set | SSO tests skip gracefully |
 
 Identity provider credentials are read from environment variables. Set them in `.env` locally
-(gitignored) or as GitHub Actions secrets. See `.env` for variable names.
+(gitignored) or as GitHub Actions secrets/variables. See `.env` for variable names.
 
 ---
 
@@ -212,29 +224,69 @@ Identity provider credentials are read from environment variables. Set them in `
 
 - **Two roles**: `admin` (full access) and `user` (everything except site management)
 - **Session cookie**: `userId|username|role|expires|HMAC-SHA256` — backward-compatible with legacy 3-part format
-- **Auto-migration**: on first start after upgrade, the single-user `auth` table is migrated to the multi-user `users` table
+- **Shared session helpers**: `src/auth/session.js` — `signCookie`, `verifyCookie`, `issueSessionCookie`
+- **Auto-migration**: on first start after upgrade, the single-user `auth` table is migrated to the multi-user `users` table via the DB migration runner
 - **Local auth**: always available; admin can disable it once federated auth is working
 
-### OIDC Flow (e.g. Google, Keycloak)
-1. Admin configures issuer URL, client ID/secret, redirect URI in Site Management → Auth Providers
-2. Login page shows "Sign in with [Provider]" button
-3. `/api/admin/oidc/authorize` → redirects to IdP with `state` + `nonce`
-4. `/api/admin/oidc/callback` → exchanges code for tokens → upserts user → issues session cookie
-5. Group → role mapping: OIDC `groups` claim values mapped to `admin`/`user`
+### OIDC Flow — routes at `/auth/oidc/*` (src/auth/routes.js)
+1. Admin configures issuer URL, client ID, optional secret, redirect URI in Site Management → Auth Providers
+2. **Public clients** (no secret) use PKCE automatically: `code_verifier` + `code_challenge` (S256)
+3. Login page shows "Sign in with [Provider]" button
+4. `GET /auth/oidc/authorize` → redirects to IdP with `state` + `nonce` (+ `code_challenge` for PKCE)
+5. `GET /auth/oidc/callback` → exchanges code → upserts user → issues session cookie
+6. Group → role mapping: OIDC `groups` claim values mapped to `/orkllm` (user) / `/orkllm/admin` (admin)
 
-### SAML Flow (e.g. Keycloak SAML, Azure AD)
-1. Admin pastes IdP metadata XML or URL; SP metadata available at `/api/admin/saml/metadata`
-2. `/api/admin/saml/login` → creates AuthnRequest → redirects to IdP SSO URL
-3. `/api/admin/saml/acs` (POST) → validates Response → upserts user → session cookie
+### SAML Flow — routes at `/auth/saml/*` (src/auth/routes.js)
+1. Admin pastes IdP metadata XML; SP metadata at `GET /auth/saml/metadata`
+2. `GET /auth/saml/login` → creates AuthnRequest → redirects to IdP SSO URL
+3. `POST /auth/saml/acs` → validates Response → upserts user → session cookie
 4. Attribute mapping: configurable paths for username, email, groups attributes
+
+### Trusted Proxy
+Configure `ORKLLM_TRUSTED_PROXY` env var or the `trusted_proxy` setting in Site Settings.
+Required when running behind nginx so `X-Forwarded-Proto` is honoured for OIDC redirect URIs.
+Values: `true` (all proxies), specific IP/CIDR (e.g. `10.0.0.0/8`), or empty (disabled).
+Takes effect on next server restart.
 
 ### Keycloak Configuration
 - **Realm**: `https://auth-lab.fischerapps.com/realms/master`
-- **OIDC client**: `orkllm-oidc`
+- **OIDC client**: `orkllm-oidc` (Standard Flow, public client — no secret, PKCE)
 - **SAML client**: `orkllm-saml`
-- **Group attribute**: `groups` — add users to `orkllm-admins` for admin role
-- **OIDC discovery**: `https://auth-lab.fischerapps.com/realms/master/.well-known/openid-configuration`
-- **SAML metadata**: `https://auth-lab.fischerapps.com/realms/master/protocol/saml/descriptor`
+- **Group paths**: `/orkllm` (regular user) and `/orkllm/admin` (admin)
+- **OIDC redirect URI**: `https://orkllm.fischerapps.com/auth/oidc/callback`
+- **SAML ACS URL**: `https://orkllm.fischerapps.com/auth/saml/acs`
+- **SP metadata**: `https://orkllm.fischerapps.com/auth/saml/metadata`
+
+## 7b. Database Migrations
+
+Schema changes are tracked via SQLite `PRAGMA user_version`. On startup, `runMigrations()` in `src/db.js` compares the stored version against `LATEST_VERSION` and runs any pending migrations in order.
+
+### Adding a migration
+
+Append to the `MIGRATIONS` array in `src/db.js`:
+
+```js
+{
+  version: 3,
+  description: 'Short description of change',
+  up(d) {
+    d.exec(`ALTER TABLE foo ADD COLUMN bar TEXT;`);
+  },
+},
+```
+
+**Rules:**
+- Never edit an existing migration — add a new one
+- Migrations must be synchronous (no async)
+- `PRAGMA user_version` is updated atomically after each successful migration
+- The current schema version is exposed at `GET /api/admin/status` → `schemaVersion`
+
+### Current migrations
+
+| Version | Description |
+|---------|-------------|
+| v1 | Initial schema: auth, stats, settings, model_settings |
+| v2 | Multi-user RBAC: users, auth_provider_config, audit_log |
 
 ---
 
@@ -388,6 +440,9 @@ echo "==> Done! Admin console: http://10.6.0.14:8000/admin"
 | Phase 8: Auth & RBAC | ✅ Done | OIDC/SAML federated auth, multi-user RBAC, Site Management UI, Keycloak integration |
 | Phase 9: Prefix Cache | ✅ Done | Tiered SSD KV cache, sliding context window, cache stats in Settings |
 | Phase 10: CI/CD | ✅ Done | GitHub Actions: parallel CI + Release, Trivy scan, dynamic shields.io badges |
+| Phase 11: DB Migrations | ✅ Done | PRAGMA user_version migration runner, v1-v2 migrations, schema version in status API |
+| Phase 12: Trusted Proxy | ✅ Done | Fastify trustProxy from env/DB setting, UI config in Settings |
+| Phase 13: SSO E2E Tests | ✅ Done | mock-oauth2-server service container in CI, nginx port proxy, real Keycloak locally |
 
 ---
 
