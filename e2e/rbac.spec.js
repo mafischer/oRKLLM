@@ -469,8 +469,8 @@ async function ssoLogin(page, username, password) {
   await page.locator('[name=password], #password').fill(password);
   await page.locator('button[type=submit], #kc-login').click();
 
-  // Wait for Keycloak to redirect back to oRKLLM (https or http depending on nginx config)
-  await page.waitForURL(/orkllm\.fischerapps\.com|127\.0\.0\.1:18000/, { timeout: 20000 });
+  // Wait for Keycloak to redirect back to oRKLLM callback, then to dashboard
+  await page.waitForURL(/orkllm\.fischerapps\.com|127\.0\.0\.1:18000|localhost:18000/, { timeout: 20000 });
 
   // Poll auth-status — session cookie is on current page's origin
   await page.waitForFunction(async () => {
