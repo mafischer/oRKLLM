@@ -102,7 +102,10 @@ export default async function authRoutes(fastify, options) {
       const config = await oidc.discovery(new URL(c.issuer), c.clientId, c.clientSecret || undefined,
         undefined, { execute: [oidc.allowInsecureRequests] });
 
-      const checks = { expectedState: storedState, nonce: request.cookies.oidc_nonce };
+      // Only validate nonce if the cookie is present — omit to skip check if missing
+      const storedNonce = request.cookies.oidc_nonce;
+      const checks = { expectedState: storedState };
+      if (storedNonce) checks.nonce = storedNonce;
       if (isPublicClient && codeVerifier) checks.pkceCodeVerifier = codeVerifier;
 
       // Reconstruct the callback URL using the registered redirectUri (preserves port)
