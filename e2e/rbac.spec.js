@@ -498,11 +498,15 @@ test('SSO: regular user logs in via OIDC and gets user role', async ({ page }) =
     expect(status.user.authProvider).toBe('oidc');
     expect(status.user.role).toBe('user');
   } finally {
-    // Always restore local auth — prevents cascading failures if SSO test fails
-    await page.evaluate(async () => {
+    // Delete auth provider and log back in via API (not UI — OIDC button may block form)
+    await page.evaluate(async ([u, p]) => {
       await fetch('/api/admin/auth-provider', { method: 'DELETE' });
-    });
-    await loginAs(page); // re-establish local session for cleanup
+      await fetch('/api/admin/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: u, password: p }),
+      });
+    }, [ADMIN_USER, ADMIN_PASS]);
   }
 });
 
@@ -525,9 +529,13 @@ test('SSO: admin user gets admin role via /orkllm/admin group mapping', async ({
     expect(status.user.authProvider).toBe('oidc');
     expect(status.user.role).toBe('admin');
   } finally {
-    await page.evaluate(async () => {
+    await page.evaluate(async ([u, p]) => {
       await fetch('/api/admin/auth-provider', { method: 'DELETE' });
-    });
-    await loginAs(page);
+      await fetch('/api/admin/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: u, password: p }),
+      });
+    }, [ADMIN_USER, ADMIN_PASS]);
   }
 });
