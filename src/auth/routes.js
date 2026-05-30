@@ -57,13 +57,30 @@ export default async function authRoutes(fastify, options) {
       params.set('code_challenge_method', 'S256');
     }
 
+    // openid-client v6 API: use discovery() + buildAuthorizationUrl()
     try {
-      const { Issuer } = await import('openid-client');
-      const issuer = await Issuer.discover(c.issuer);
-      return reply.redirect(`${issuer.authorization_endpoint}?${params}`);
-    } catch {
-      const authUrl = `${c.issuer.replace(/\/$/, '')}/protocol/openid-connect/auth?${params}`;
-      return reply.redirect(authUrl);
+      const oidc = await import('openid-client');
+      // allowInsecureRequests needed for http:// issuers (CI with self-signed or plain HTTP)
+      const config = await oidc.discovery(new URL(c.issuer), c.clientId, c.clientSecret || undefined,
+        undefined, { execute: [oidc.allowInsecureRequests] });
+
+      const additionalParams = {};
+      if (isPublicClient && codeChallenge) {
+        additionalParams.code_challenge = codeChallenge;
+        additionalParams.code_challenge_method = 'S256';
+      }
+
+      const authUrl = oidc.buildAuthorizationUrl(config, {
+        redirect_uri: c.redirectUri,
+        scope: 'openid profile email',
+        state,
+        nonce,
+        ...additionalParams,
+      });
+      return reply.redirect(authUrl.href);
+    } catch (e) {
+      console.error('[OIDC] Discovery/authorize failed:', e.message);
+      return reply.redirect(`/?oidc_error=${encodeURIComponent('OIDC configuration failed: ' + e.message)}`);
     }
   });
 
@@ -72,30 +89,25 @@ export default async function authRoutes(fastify, options) {
     if (cfg?.providerType !== 'oidc') return reply.status(400).send({ error: 'OIDC not configured' });
     const c = cfg.config;
 
-    const { code, state, error: oidcError } = request.query;
+    const { error: oidcError } = request.query;
     if (oidcError) return reply.redirect(`/?oidc_error=${encodeURIComponent(oidcError)}`);
 
     const storedState = request.cookies.oidc_state;
-    if (!storedState || storedState !== state) return reply.status(400).send({ error: 'Invalid state parameter' });
-
     const isPublicClient = !c.clientSecret;
     const codeVerifier = request.cookies.oidc_cv;
 
     let tokenData;
     try {
-      const { Issuer } = await import('openid-client');
-      const issuer = await Issuer.discover(c.issuer);
+      const oidc = await import('openid-client');
+      const config = await oidc.discovery(new URL(c.issuer), c.clientId, c.clientSecret || undefined,
+        undefined, { execute: [oidc.allowInsecureRequests] });
 
-      const clientConfig = isPublicClient
-        ? { client_id: c.clientId, token_endpoint_auth_method: 'none' }
-        : { client_id: c.clientId, client_secret: c.clientSecret };
+      const checks = { expectedState: storedState, nonce: request.cookies.oidc_nonce };
+      if (isPublicClient && codeVerifier) checks.pkceCodeVerifier = codeVerifier;
 
-      const client = new issuer.Client(clientConfig);
-      const checks = { state, nonce: request.cookies.oidc_nonce };
-      if (isPublicClient && codeVerifier) checks.code_verifier = codeVerifier;
-
-      const tokenSet = await client.callback(c.redirectUri, { code, state }, checks);
-      tokenData = tokenSet.claims();
+      const currentUrl = new URL(`${request.protocol}://${request.hostname}${request.url}`);
+      const tokens = await oidc.authorizationCodeGrant(config, currentUrl, checks);
+      tokenData = tokens.claims();
     } catch (e) {
       console.error('[OIDC] Token exchange failed:', e.message);
       return reply.redirect(`/?oidc_error=${encodeURIComponent('Authentication failed: ' + e.message)}`);
