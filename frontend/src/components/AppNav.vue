@@ -1,19 +1,24 @@
 <template>
   <!-- Navbar -->
   <v-app-bar flat class="glass-nav px-4" density="comfortable">
-    <!-- Logo: tappable on mobile to open nav drawer, plain on desktop -->
-    <div
-      class="d-flex align-center gap-2 cursor-pointer"
-      :class="{ 'mr-2': true }"
-      @click="$vuetify.display.smAndUp ? null : (mobileNavOpen = true)"
-    >
-      <v-icon color="primary" size="32">mdi-chip</v-icon>
-      <v-app-bar-title class="d-flex align-center gap-2 pa-0">
-        <span class="font-weight-bold text-h5 text-gradient">oRKLLM</span>
-        <!-- Version chip hidden on mobile — shown in user drawer instead -->
-        <v-chip size="x-small" variant="outlined" color="primary" class="font-weight-regular text-caption mt-1 d-none d-sm-flex">v{{ appVersion }}</v-chip>
-      </v-app-bar-title>
-    </div>
+    <!-- Hamburger on mobile, chip icon on desktop -->
+    <v-icon
+      color="primary"
+      size="28"
+      class="mr-2 d-flex d-sm-none cursor-pointer"
+      @click="mobileNavOpen = true"
+    >mdi-menu</v-icon>
+    <v-icon color="primary" size="32" class="mr-2 d-none d-sm-flex">mdi-chip</v-icon>
+
+    <v-app-bar-title class="d-flex align-center gap-2">
+      <!-- oRKLLM text always navigates to dashboard -->
+      <span
+        class="font-weight-bold text-h5 text-gradient cursor-pointer"
+        @click="$router.push('/')"
+      >oRKLLM</span>
+      <!-- Version chip hidden on mobile — shown in user drawer instead -->
+      <v-chip size="x-small" variant="outlined" color="primary" class="font-weight-regular text-caption mt-1 d-none d-sm-flex">v{{ appVersion }}</v-chip>
+    </v-app-bar-title>
 
     <v-spacer></v-spacer>
 
