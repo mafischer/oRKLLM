@@ -1,5 +1,6 @@
 services:
   keycloak:
+    image: orkllm-keycloak-test:latest
     build:
       context: ./e2e
       dockerfile: Dockerfile.keycloak

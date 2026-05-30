@@ -105,15 +105,13 @@ jobs:
             curl -sf http://localhost:8080/realms/master/.well-known/openid-configuration > /dev/null 2>&1 \
               && echo "Keycloak ready after ${i}x2s" && break
             if [ $i -eq 45 ]; then
-              echo "Keycloak did not become ready — container logs:"
-              docker compose -f docker-compose.test.yml logs keycloak || true
+              echo "Keycloak container logs:"
+              docker compose -f docker-compose.test.yml logs --tail=50 keycloak || true
               exit 1
             fi
             sleep 2
           done
-          ISSUER=$(curl -sf http://localhost:8080/realms/master/.well-known/openid-configuration \
-            | node -e "let d=''; process.stdin.on('data',c=>d+=c).on('end',()=>console.log(JSON.parse(d).issuer))")
-          echo "Keycloak issuer: $ISSUER"
+          echo "Keycloak issuer: $(curl -sf http://localhost:8080/realms/master/.well-known/openid-configuration | grep -o '"issuer":"[^"]*"')"
 
       - name: Run E2E tests
         id: playwright
